@@ -2,19 +2,9 @@ from datetime import date
 
 from sqlalchemy import create_engine, text
 
-from portfolio_value import calculate_portfolio
+from app.portfolio.portfolio_value import calculate_portfolio
+from app.database.connection import get_engine
 import os
-
-
-DB_USER = os.getenv("POSTGRES_USER", "investing")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "change_this_password")
-DB_NAME = os.getenv("POSTGRES_DB", "investing")
-
-DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@postgres:5432/{DB_NAME}"
-
-
-def get_engine():
-    return create_engine(DATABASE_URL)
 
 
 def snapshot_portfolio(snapshot_date=None):

@@ -3,15 +3,11 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
 
-from realized_gains import calculate_all_realized_gains
-from portfolio_value import calculate_portfolio
-from broker_cash import calculate_broker_cash
+from app.portfolio.realized_gains import calculate_all_realized_gains
+from app.portfolio.portfolio_value import calculate_portfolio
+from app.portfolio.broker_cash import calculate_broker_cash
+from app.database.connection import get_engine
 
-DB_USER = os.getenv("POSTGRES_USER", "investing")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "change_this_password")
-DB_NAME = os.getenv("POSTGRES_DB", "investing")
-
-DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@postgres:5432/{DB_NAME}"
 
 st.set_page_config(page_title="Investing Platform", layout="wide")
 st.title("Investing Platform")
