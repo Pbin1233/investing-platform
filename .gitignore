@@ -6,3 +6,7 @@ backups/
 postgres/
 *.csv
 *.xlsx
+.venv/
+.env
+__pycache__/
+*.pyc
