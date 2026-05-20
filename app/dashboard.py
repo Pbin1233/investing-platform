@@ -1,0 +1,178 @@
+import os
+import pandas as pd
+import streamlit as st
+from sqlalchemy import create_engine, text
+
+from realized_gains import calculate_all_realized_gains
+from portfolio_value import calculate_portfolio
+from broker_cash import calculate_broker_cash
+
+DB_USER = os.getenv("POSTGRES_USER", "investing")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "change_this_password")
+DB_NAME = os.getenv("POSTGRES_DB", "investing")
+
+DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@postgres:5432/{DB_NAME}"
+
+st.set_page_config(page_title="Investing Platform", layout="wide")
+st.title("Investing Platform")
+
+engine = create_engine(DATABASE_URL)
+
+def read_sql(query: str) -> pd.DataFrame:
+    with engine.connect() as conn:
+        return pd.read_sql(text(query), conn)
+
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "Dashboard",
+    "Portfolio",
+    "Transactions",
+    "Dividends",
+    "Realized Gains",
+])
+
+with tab1:
+    st.header("Account Summary")
+
+    portfolio = calculate_portfolio()
+    cash = calculate_broker_cash()
+
+    if portfolio.empty and cash.empty:
+        st.info("No data yet.")
+    else:
+        portfolio_by_broker = (
+            portfolio
+            .groupby("broker_name", as_index=False)["market_value_eur"]
+            .sum()
+            if not portfolio.empty
+            else pd.DataFrame(columns=["broker_name", "market_value_eur"])
+        )
+
+        summary = cash.merge(
+            portfolio_by_broker,
+            on="broker_name",
+            how="outer",
+        ).fillna(0)
+
+        summary["total_account_value_eur"] = (
+            summary["cash_balance_eur"]
+            + summary["market_value_eur"]
+        )
+
+        total_cash = summary["cash_balance_eur"].sum()
+        total_securities = summary["market_value_eur"].sum()
+        total_account = summary["total_account_value_eur"].sum()
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Cash EUR", f"{total_cash:,.2f}")
+        col2.metric("Securities EUR", f"{total_securities:,.2f}")
+        col3.metric("Total Account Value EUR", f"{total_account:,.2f}")
+
+        st.dataframe(summary, use_container_width=True)
+
+    st.subheader("Portfolio History")
+
+    history = read_sql("""
+        SELECT
+            snapshot_date,
+            SUM(market_value_eur) AS total_value_eur,
+            SUM(invested_eur) AS total_invested_eur,
+            SUM(unrealized_pl_eur) AS total_unrealized_eur
+        FROM portfolio_snapshots
+        GROUP BY snapshot_date
+        ORDER BY snapshot_date
+    """)
+
+    if not history.empty:
+        history["snapshot_date"] = pd.to_datetime(history["snapshot_date"])
+
+        st.line_chart(
+            history.set_index("snapshot_date")[
+                ["total_value_eur", "total_invested_eur"]
+            ]
+        )
+
+with tab2:
+    st.header("Portfolio Valuation")
+
+    portfolio = calculate_portfolio()
+
+    if portfolio.empty:
+        st.info("No portfolio data yet.")
+    else:
+        total_value = pd.to_numeric(portfolio["market_value_eur"]).sum()
+        total_invested = pd.to_numeric(portfolio["invested_eur"]).sum()
+        unrealized = pd.to_numeric(portfolio["unrealized_pl_eur"]).sum()
+        unrealized_pct = unrealized / total_invested * 100 if total_invested else 0
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Market Value EUR", f"{total_value:,.2f}")
+        col2.metric("Invested EUR", f"{total_invested:,.2f}")
+        col3.metric("Unrealized P/L EUR", f"{unrealized:,.2f}")
+        col4.metric("Unrealized P/L %", f"{unrealized_pct:,.2f}%")
+
+        st.dataframe(portfolio, use_container_width=True)
+
+with tab3:
+    st.header("Transactions")
+
+    transactions = read_sql("""
+        SELECT
+            trade_date,
+            broker_name,
+            ticker,
+            asset_name,
+            action,
+            quantity,
+            price,
+            fees,
+            currency,
+            fx_rate_to_eur
+        FROM transactions
+        ORDER BY trade_date DESC, transaction_id DESC
+        LIMIT 1000
+    """)
+
+    st.dataframe(transactions, use_container_width=True)
+
+with tab4:
+    st.header("Dividends")
+
+    dividends = read_sql("""
+        SELECT
+            payment_date,
+            broker_name,
+            ticker,
+            gross_amount,
+            withholding_tax,
+            net_amount,
+            currency,
+            fx_rate_to_eur,
+            net_amount * fx_rate_to_eur AS net_amount_eur
+        FROM dividends
+        ORDER BY payment_date DESC, dividend_id DESC
+        LIMIT 1000
+    """)
+
+    if dividends.empty:
+        st.info("No dividends yet.")
+    else:
+        total_net = pd.to_numeric(dividends["net_amount_eur"]).sum()
+        st.metric("Total Net Dividends EUR", f"{total_net:,.2f}")
+        st.dataframe(dividends, use_container_width=True)
+
+with tab5:
+    st.header("Realized Gains - LIFO")
+
+    gains = calculate_all_realized_gains()
+
+    if gains.empty:
+        st.info("No realized gains found.")
+    else:
+        st.dataframe(gains, use_container_width=True)
+
+        total_gain = pd.to_numeric(gains["realized_gain_eur"]).sum()
+        estimated_tax = total_gain * 0.26
+
+        col1, col2 = st.columns(2)
+        col1.metric("Total Realized Gain EUR", f"{total_gain:,.2f}")
+        col2.metric("Estimated 26% Tax EUR", f"{estimated_tax:,.2f}")

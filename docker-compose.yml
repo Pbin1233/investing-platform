@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: investing-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: investing
+      POSTGRES_USER: investing
+      POSTGRES_PASSWORD: change_this_password
+      TZ: Europe/Rome
+    ports:
+      - "5433:5432"
+    volumes:
+      - investing_postgres_data:/var/lib/postgresql/data
+      - /volume1/docker/configs/investing-platform/app/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+
+  adminer:
+    image: adminer:latest
+    container_name: investing-adminer
+    restart: unless-stopped
+    ports:
+      - "8088:8080"
+    depends_on:
+      - postgres
+
+  app:
+    image: python:3.12-slim
+    container_name: investing-app
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: investing
+      POSTGRES_USER: investing
+      POSTGRES_PASSWORD: change_this_password
+    working_dir: /app
+    volumes:
+      - /volume1/docker/configs/investing-platform/app:/app
+      - /volume1/docker/configs/investing-platform/data:/data
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             streamlit run dashboard.py --server.address=0.0.0.0 --server.port=8501"
+    ports:
+      - "8501:8501"
+    depends_on:
+      - postgres
+
+volumes:
+  investing_postgres_data:
