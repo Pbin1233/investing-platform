@@ -1,13 +1,8 @@
-import os
 import sys
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
-DB_USER = os.getenv("POSTGRES_USER", "investing")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "change_this_password")
-DB_NAME = os.getenv("POSTGRES_DB", "investing")
-
-DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@postgres:5432/{DB_NAME}"
+from app.database.connection import get_engine
 
 CSV_PATH = "/data/imports/dividends.csv"
 
@@ -86,7 +81,7 @@ def main():
             errors="raise"
         )
 
-    engine = create_engine(DATABASE_URL)
+    engine = get_engine()
 
     with engine.begin() as conn:
 
