@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: investing
       POSTGRES_USER: investing
-      POSTGRES_PASSWORD: change_this_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: Europe/Rome
     ports:
       - "5433:5432"
@@ -30,7 +30,7 @@ services:
     environment:
       POSTGRES_DB: investing
       POSTGRES_USER: investing
-      POSTGRES_PASSWORD: change_this_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     working_dir: /app
     volumes:
       - /volume1/docker/configs/investing-platform/app:/app
