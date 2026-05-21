@@ -1,4 +1,3 @@
-import os
 from datetime import date
 
 import pandas as pd
@@ -6,6 +5,7 @@ import yfinance as yf
 from sqlalchemy import text
 
 from app.database.connection import get_engine
+from app.ops.job_runs import start_job, finish_job
 
 def usd_to_eur_rate():
     eurusd = yf.Ticker("EURUSD=X").history(period="1d")
@@ -74,30 +74,52 @@ def upsert_price(engine, ticker, close_price, currency, fx_rate_to_eur):
 
 
 def main():
-    engine = get_engine()
-    securities = fetch_securities(engine)
+    job_id = start_job("update_prices")
+    rows_processed = 0
 
-    for row in securities.itertuples(index=False):
-        close_price = fetch_price(row.price_symbol)
+    try:
+        engine = get_engine()
+        securities = fetch_securities(engine)
 
-        if close_price is None:
-            print(f"No price for {row.ticker} using {row.price_symbol}")
-            continue
+        for row in securities.itertuples(index=False):
+            close_price = fetch_price(row.price_symbol)
 
-        fx_rate = fx_to_eur(row.quote_currency)
+            if close_price is None:
+                print(f"No price for {row.ticker} using {row.price_symbol}")
+                continue
 
-        upsert_price(
-            engine,
-            row.ticker,
-            close_price,
-            row.quote_currency,
-            fx_rate,
+            fx_rate = fx_to_eur(row.quote_currency)
+
+            upsert_price(
+                engine,
+                row.ticker,
+                close_price,
+                row.quote_currency,
+                fx_rate,
+            )
+
+            rows_processed += 1
+
+            print(
+                f"{row.ticker}: {close_price} {row.quote_currency}, "
+                f"FX to EUR {fx_rate}"
+            )
+
+        finish_job(
+            job_id,
+            "success",
+            rows_processed=rows_processed,
+            message="Market prices updated",
         )
 
-        print(
-            f"{row.ticker}: {close_price} {row.quote_currency}, "
-            f"FX to EUR {fx_rate}"
+    except Exception as exc:
+        finish_job(
+            job_id,
+            "failed",
+            rows_processed=rows_processed,
+            message=str(exc),
         )
+        raise
 
 
 if __name__ == "__main__":
