@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from app.database.connection import get_engine
 

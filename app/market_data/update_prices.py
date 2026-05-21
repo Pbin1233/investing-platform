@@ -3,7 +3,7 @@ from datetime import date
 
 import pandas as pd
 import yfinance as yf
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from app.database.connection import get_engine
 

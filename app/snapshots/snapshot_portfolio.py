@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from app.portfolio.portfolio_value import calculate_portfolio
 from app.database.connection import get_engine
