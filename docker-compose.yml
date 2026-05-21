@@ -7,6 +7,8 @@ services:
       POSTGRES_DB: investing
       POSTGRES_USER: investing
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       TZ: Europe/Rome
     ports:
       - "5433:5432"
@@ -31,6 +33,8 @@ services:
       POSTGRES_DB: investing
       POSTGRES_USER: investing
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
     working_dir: /workspace
     volumes:
       - /volume1/docker/configs/investing-platform:/workspace
