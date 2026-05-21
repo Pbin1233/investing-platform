@@ -31,13 +31,13 @@ services:
       POSTGRES_DB: investing
       POSTGRES_USER: investing
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    working_dir: /app
+    working_dir: /workspace
     volumes:
-      - /volume1/docker/configs/investing-platform/app:/app
+      - /volume1/docker/configs/investing-platform:/workspace
       - /volume1/docker/configs/investing-platform/data:/data
     command: >
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-             streamlit run dashboard/dashboard.py --server.address=0.0.0.0 --server.port=8501"
+      sh -c "pip install --no-cache-dir -r app/requirements.txt &&
+             streamlit run app/dashboard/dashboard.py --server.address=0.0.0.0 --server.port=8501"
     ports:
       - "8501:8501"
     depends_on:
