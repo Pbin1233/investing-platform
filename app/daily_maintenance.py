@@ -1,8 +1,37 @@
+import json
 import subprocess
+from datetime import datetime, timezone
 
 from app.ops.job_runs import start_job, finish_job
 from app.market_data.update_prices import main as update_prices
 from app.snapshots.snapshot_portfolio import snapshot_portfolio
+
+
+def run_stage(stage_name, func):
+    started_at = datetime.now(timezone.utc)
+
+    try:
+        result = func()
+        completed_at = datetime.now(timezone.utc)
+
+        return {
+            "stage": stage_name,
+            "status": "success",
+            "started_at": started_at.isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "message": str(result) if result is not None else None,
+        }
+
+    except Exception as exc:
+        completed_at = datetime.now(timezone.utc)
+
+        return {
+            "stage": stage_name,
+            "status": "failed",
+            "started_at": started_at.isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "message": str(exc),
+        }
 
 
 def run_backup():
@@ -20,32 +49,39 @@ def run_backup():
 
 def main():
     job_id = start_job("daily_maintenance")
+    stages = []
 
-    try:
-        print("Updating market prices...")
-        update_prices()
+    pipeline = [
+        ("update_prices", update_prices),
+        ("snapshot_portfolio", snapshot_portfolio),
+        ("backup_database", run_backup),
+    ]
 
-        print("Creating portfolio snapshot...")
-        snapshot_portfolio()
+    for stage_name, func in pipeline:
+        print(f"Running stage: {stage_name}")
+        result = run_stage(stage_name, func)
+        stages.append(result)
 
-        print("Running database backup...")
-        backup_message = run_backup()
+        if result["status"] == "failed":
+            message = json.dumps({"stages": stages}, default=str)
+            finish_job(
+                job_id,
+                "failed",
+                rows_processed=None,
+                message=message,
+            )
+            raise RuntimeError(f"Daily maintenance failed at {stage_name}")
 
-        finish_job(
-            job_id,
-            "success",
-            message=backup_message,
-        )
+    message = json.dumps({"stages": stages}, default=str)
 
-        print("Daily maintenance complete.")
+    finish_job(
+        job_id,
+        "success",
+        rows_processed=None,
+        message=message,
+    )
 
-    except Exception as exc:
-        finish_job(
-            job_id,
-            "failed",
-            message=str(exc),
-        )
-        raise
+    print("Daily maintenance complete.")
 
 
 if __name__ == "__main__":
