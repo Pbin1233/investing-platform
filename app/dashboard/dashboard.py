@@ -1,7 +1,6 @@
-import os
 import pandas as pd
 import streamlit as st
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from app.portfolio.realized_gains import calculate_all_realized_gains
 from app.portfolio.portfolio_value import calculate_portfolio
@@ -12,7 +11,7 @@ from app.database.connection import get_engine
 st.set_page_config(page_title="Investing Platform", layout="wide")
 st.title("Investing Platform")
 
-engine = create_engine(DATABASE_URL)
+engine = get_engine()
 
 def read_sql(query: str) -> pd.DataFrame:
     with engine.connect() as conn:
