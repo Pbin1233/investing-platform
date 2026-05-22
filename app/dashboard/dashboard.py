@@ -5,7 +5,7 @@ from sqlalchemy import text
 from app.portfolio.realized_gains import calculate_all_realized_gains
 from app.portfolio.portfolio_value import calculate_portfolio
 from app.portfolio.broker_cash import calculate_broker_cash
-from app.portfolio.xirr import calculate_portfolio_xirr, calculate_broker_xirr
+from app.portfolio.xirr import calculate_portfolio_xirr, calculate_broker_xirr, calculate_position_xirr
 from app.portfolio.benchmark import benchmark_xirr
 from app.database.connection import get_engine
 
@@ -162,6 +162,31 @@ with tab2:
         col4.metric("Unrealized P/L %", f"{unrealized_pct:,.2f}%")
 
         st.dataframe(portfolio, use_container_width=True)
+
+        st.subheader("Position XIRR")
+
+        position_xirr = calculate_position_xirr()
+
+        if position_xirr.empty:
+            st.info("No position XIRR data yet.")
+        else:
+            position_display = position_xirr.copy()
+            position_display["xirr_pct"] = position_display["xirr"].apply(
+                lambda x: None if pd.isna(x) else x * 100
+            )
+
+            st.dataframe(
+                position_display[
+                    [
+                        "ticker",
+                        "as_of_date",
+                        "xirr_pct",
+                        "cash_flow_count",
+                        "terminal_value_eur",
+                    ]
+                ],
+                use_container_width=True,
+            )
 
 with tab3:
     st.header("Transactions")
