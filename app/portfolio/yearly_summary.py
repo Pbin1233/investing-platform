@@ -107,6 +107,20 @@ def calculate_yearly_summary() -> pd.DataFrame:
         summary["realized_gain_eur"].clip(lower=0) * 0.26
     )
 
+    summary["estimated_dividend_tax_eur"] = (
+        summary["gross_dividends_eur"].clip(lower=0) * 0.26
+    )
+
+    summary["estimated_additional_dividend_tax_eur"] = (
+        summary["estimated_dividend_tax_eur"]
+        - summary["withholding_tax_eur"]
+    ).clip(lower=0)
+
+    summary["estimated_total_tax_eur"] = (
+        summary["estimated_capital_gains_tax_eur"]
+        + summary["estimated_additional_dividend_tax_eur"]
+    )
+
     return summary.sort_values("year")
 
 
