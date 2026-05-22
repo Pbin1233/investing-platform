@@ -43,7 +43,7 @@ services:
       - /volume1/docker/configs/investing-platform:/workspace
       - /volume1/docker/configs/investing-platform/data:/data
     command: >
-      streamlit run app/dashboard/dashboard.py --server.address=0.0.0.0 --server.port=8501
+      PYTHONPATH=/workspace streamlit run app/dashboard/dashboard.py --server.address=0.0.0.0 --server.port=8501
     ports:
       - "8501:8501"
     depends_on:
