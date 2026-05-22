@@ -116,6 +116,15 @@ def calculate_yearly_summary() -> pd.DataFrame:
         + summary["estimated_dividend_tax_eur"]
     )
 
+    summary["estimated_ivafe_eur"] = (
+        summary["year_end_market_value_eur"].clip(lower=0) * 0.002
+    )
+
+    summary["estimated_total_tax_with_ivafe_eur"] = (
+        summary["estimated_total_tax_eur"]
+        + summary["estimated_ivafe_eur"]
+    )
+
     return summary.sort_values("year")
 
 
