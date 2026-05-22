@@ -5,6 +5,8 @@ from sqlalchemy import text
 from app.portfolio.realized_gains import calculate_all_realized_gains
 from app.portfolio.portfolio_value import calculate_portfolio
 from app.portfolio.broker_cash import calculate_broker_cash
+from app.portfolio.xirr import calculate_portfolio_xirr
+from app.portfolio.benchmark import benchmark_xirr
 from app.database.connection import get_engine
 
 
@@ -63,6 +65,38 @@ with tab1:
         col3.metric("Total Account Value EUR", f"{total_account:,.2f}")
 
         st.dataframe(summary, use_container_width=True)
+
+    st.subheader("Performance")
+
+    try:
+        xirr_result = calculate_portfolio_xirr()
+        benchmark_result = benchmark_xirr("SPY")
+
+        perf_col1, perf_col2, perf_col3 = st.columns(3)
+
+        portfolio_xirr = xirr_result["xirr"]
+        benchmark_return = benchmark_result["benchmark_xirr"]
+        spread = benchmark_result["spread"]
+
+        perf_col1.metric(
+            "Portfolio XIRR",
+            "n/a" if portfolio_xirr is None else f"{portfolio_xirr * 100:,.2f}%"
+        )
+        perf_col2.metric(
+            "SPY XIRR",
+            "n/a" if benchmark_return is None else f"{benchmark_return * 100:,.2f}%"
+        )
+        perf_col3.metric(
+            "Spread vs SPY",
+            "n/a" if spread is None else f"{spread * 100:,.2f}%"
+        )
+
+        st.caption(
+            "Benchmark comparison is FX-aware and uses the same external cash-flow dates."
+        )
+
+    except Exception as exc:
+        st.warning(f"Performance metrics unavailable: {exc}")
 
     st.subheader("Portfolio History")
 
