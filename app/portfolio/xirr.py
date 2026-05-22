@@ -155,3 +155,111 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def broker_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
+    if as_of_date is None:
+        as_of_date = date.today()
+
+    engine = get_engine()
+
+    external_flows = pd.read_sql(
+        text("""
+            SELECT
+                broker_name,
+                flow_date,
+                CASE
+                    WHEN flow_type = 'DEPOSIT'
+                    THEN -amount * fx_rate_to_eur
+                    WHEN flow_type = 'WITHDRAWAL'
+                    THEN amount * fx_rate_to_eur
+                    ELSE 0
+                END AS amount_eur,
+                flow_type AS source
+            FROM cash_flows
+            WHERE flow_type IN ('DEPOSIT', 'WITHDRAWAL')
+        """),
+        engine,
+    )
+
+    dividends = pd.read_sql(
+        text("""
+            SELECT
+                broker_name,
+                payment_date AS flow_date,
+                net_amount * fx_rate_to_eur AS amount_eur,
+                'DIVIDEND' AS source
+            FROM dividends
+        """),
+        engine,
+    )
+
+    portfolio = calculate_portfolio()
+
+    if portfolio.empty:
+        terminal = pd.DataFrame(
+            columns=["broker_name", "flow_date", "amount_eur", "source"]
+        )
+    else:
+        terminal = (
+            portfolio
+            .groupby("broker_name", as_index=False)["market_value_eur"]
+            .sum()
+            .rename(columns={"market_value_eur": "amount_eur"})
+        )
+        terminal["flow_date"] = as_of_date
+        terminal["source"] = "CURRENT_VALUE"
+
+    flows = pd.concat(
+        [external_flows, dividends, terminal],
+        ignore_index=True,
+    )
+
+    if flows.empty:
+        return flows
+
+    flows["flow_date"] = pd.to_datetime(flows["flow_date"]).dt.date
+    flows["amount_eur"] = flows["amount_eur"].astype(float)
+
+    return flows[flows["amount_eur"] != 0].sort_values(
+        ["broker_name", "flow_date"]
+    )
+
+
+def calculate_broker_xirr(as_of_date: date | None = None) -> pd.DataFrame:
+    if as_of_date is None:
+        as_of_date = date.today()
+
+    flows = broker_cash_flows(as_of_date=as_of_date)
+
+    if flows.empty:
+        return pd.DataFrame(
+            columns=[
+                "broker_name",
+                "as_of_date",
+                "xirr",
+                "cash_flow_count",
+                "terminal_value_eur",
+            ]
+        )
+
+    rows = []
+
+    for broker_name, group in flows.groupby("broker_name"):
+        xirr = annualized_return(group)
+        terminal_value = group.loc[
+            group["source"] == "CURRENT_VALUE",
+            "amount_eur",
+        ].sum()
+
+        rows.append(
+            {
+                "broker_name": broker_name,
+                "as_of_date": as_of_date,
+                "xirr": xirr,
+                "cash_flow_count": len(group),
+                "terminal_value_eur": float(terminal_value),
+            }
+        )
+
+    return pd.DataFrame(rows).sort_values("broker_name")
