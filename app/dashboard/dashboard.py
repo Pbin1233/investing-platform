@@ -5,6 +5,7 @@ from sqlalchemy import text
 from app.portfolio.realized_gains import calculate_all_realized_gains
 from app.portfolio.portfolio_value import calculate_portfolio
 from app.portfolio.broker_cash import calculate_broker_cash
+from app.portfolio.yearly_summary import calculate_yearly_summary
 from app.portfolio.xirr import calculate_portfolio_xirr, calculate_broker_xirr, calculate_position_xirr
 from app.portfolio.benchmark import benchmark_xirr
 from app.database.connection import get_engine
@@ -19,12 +20,13 @@ def read_sql(query: str) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(query), conn)
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Dashboard",
     "Portfolio",
     "Transactions",
     "Dividends",
     "Realized Gains",
+    "Yearly Summary",
 ])
 
 with tab1:
@@ -252,3 +254,33 @@ with tab5:
         col1, col2 = st.columns(2)
         col1.metric("Total Realized Gain EUR", f"{total_gain:,.2f}")
         col2.metric("Estimated 26% Tax EUR", f"{estimated_tax:,.2f}")
+
+
+with tab6:
+    st.header("Yearly Summary")
+
+    summary = calculate_yearly_summary()
+
+    if summary.empty:
+        st.info("No yearly summary data available.")
+    else:
+        st.dataframe(summary, use_container_width=True)
+
+        latest = summary.sort_values("year").iloc[-1]
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Latest Year Net Deposits EUR",
+            f"{latest['net_external_cash_flow_eur']:,.2f}"
+        )
+
+        col2.metric(
+            "Latest Year Dividends EUR",
+            f"{latest['net_dividends_eur']:,.2f}"
+        )
+
+        col3.metric(
+            "Estimated Tax EUR",
+            f"{latest['estimated_capital_gains_tax_eur']:,.2f}"
+        )
