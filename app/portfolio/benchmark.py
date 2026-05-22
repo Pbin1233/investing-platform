@@ -3,7 +3,11 @@ from datetime import date
 import pandas as pd
 import yfinance as yf
 
-from app.portfolio.xirr import annualized_return, portfolio_cash_flows, calculate_portfolio_xirr
+from app.portfolio.xirr import (
+    annualized_return,
+    portfolio_cash_flows,
+    calculate_portfolio_xirr,
+)
 
 
 DEFAULT_BENCHMARK = "SPY"
@@ -20,17 +24,25 @@ def fetch_close_on_or_before(symbol: str, target_date: date) -> float:
     )
 
     if hist.empty:
-        raise RuntimeError(f"No benchmark price for {symbol} near {target_date}")
+        raise RuntimeError(f"No price for {symbol} near {target_date}")
 
     hist = hist[hist.index.date <= target_date]
 
     if hist.empty:
-        raise RuntimeError(f"No benchmark price on or before {target_date}")
+        raise RuntimeError(f"No price for {symbol} on or before {target_date}")
 
     return float(hist["Close"].iloc[-1])
 
 
-def benchmark_xirr(symbol: str = DEFAULT_BENCHMARK, as_of_date: date | None = None) -> dict:
+def fetch_usd_to_eur_on_or_before(target_date: date) -> float:
+    eur_usd = fetch_close_on_or_before("EURUSD=X", target_date)
+    return 1 / eur_usd
+
+
+def benchmark_xirr(
+    symbol: str = DEFAULT_BENCHMARK,
+    as_of_date: date | None = None,
+) -> dict:
     if as_of_date is None:
         as_of_date = date.today()
 
@@ -43,11 +55,14 @@ def benchmark_xirr(symbol: str = DEFAULT_BENCHMARK, as_of_date: date | None = No
     benchmark_cash_flows = []
 
     for row in invest_flows.itertuples(index=False):
-        price = fetch_close_on_or_before(symbol, row.flow_date)
+        benchmark_price_usd = fetch_close_on_or_before(symbol, row.flow_date)
+        usd_to_eur = fetch_usd_to_eur_on_or_before(row.flow_date)
+
+        benchmark_price_eur = benchmark_price_usd * usd_to_eur
 
         if row.source == "DEPOSIT":
-            invested = -row.amount_eur
-            units += invested / price
+            invested_eur = -row.amount_eur
+            units += invested_eur / benchmark_price_eur
             benchmark_cash_flows.append(
                 {
                     "flow_date": row.flow_date,
@@ -57,8 +72,8 @@ def benchmark_xirr(symbol: str = DEFAULT_BENCHMARK, as_of_date: date | None = No
             )
 
         elif row.source == "WITHDRAWAL":
-            withdrawn = row.amount_eur
-            units -= withdrawn / price
+            withdrawn_eur = row.amount_eur
+            units -= withdrawn_eur / benchmark_price_eur
             benchmark_cash_flows.append(
                 {
                     "flow_date": row.flow_date,
@@ -67,13 +82,15 @@ def benchmark_xirr(symbol: str = DEFAULT_BENCHMARK, as_of_date: date | None = No
                 }
             )
 
-    terminal_price = fetch_close_on_or_before(symbol, as_of_date)
-    terminal_value = units * terminal_price
+    terminal_price_usd = fetch_close_on_or_before(symbol, as_of_date)
+    terminal_usd_to_eur = fetch_usd_to_eur_on_or_before(as_of_date)
+    terminal_price_eur = terminal_price_usd * terminal_usd_to_eur
+    terminal_value_eur = units * terminal_price_eur
 
     benchmark_cash_flows.append(
         {
             "flow_date": as_of_date,
-            "amount_eur": terminal_value,
+            "amount_eur": terminal_value_eur,
             "source": "BENCHMARK_CURRENT_VALUE",
         }
     )
@@ -90,12 +107,13 @@ def benchmark_xirr(symbol: str = DEFAULT_BENCHMARK, as_of_date: date | None = No
         "portfolio_xirr": portfolio_result["xirr"],
         "portfolio_terminal_value_eur": portfolio_result["terminal_value_eur"],
         "benchmark_xirr": benchmark_return,
-        "benchmark_terminal_value_eur": float(terminal_value),
+        "benchmark_terminal_value_eur": float(terminal_value_eur),
         "spread": (
             portfolio_result["xirr"] - benchmark_return
             if portfolio_result["xirr"] is not None and benchmark_return is not None
             else None
         ),
+        "fx_aware": True,
     }
 
 
@@ -104,6 +122,7 @@ def main():
 
     print(f"Benchmark comparison: {result['symbol']}")
     print(f"as_of_date: {result['as_of_date']}")
+    print(f"fx_aware: {result['fx_aware']}")
     print(f"portfolio_terminal_value_eur: {result['portfolio_terminal_value_eur']:.2f}")
     print(f"benchmark_terminal_value_eur: {result['benchmark_terminal_value_eur']:.2f}")
 
