@@ -7,6 +7,7 @@ from app.portfolio.portfolio_value import calculate_portfolio
 from app.portfolio.broker_cash import calculate_broker_cash
 from app.portfolio.yearly_summary import calculate_yearly_summary
 from app.portfolio.allocation import allocation_by_ticker, allocation_by_broker, concentration_metrics
+from app.portfolio.performance_history import calculate_performance_history
 from app.portfolio.xirr import calculate_portfolio_xirr, calculate_broker_xirr, calculate_position_xirr
 from app.portfolio.benchmark import benchmark_xirr
 from app.database.connection import get_engine
@@ -144,6 +145,31 @@ with tab1:
                 ["total_value_eur", "total_invested_eur"]
             ]
         )
+
+    st.subheader("Performance History")
+
+    performance_history = calculate_performance_history()
+
+    if performance_history.empty:
+        st.info("No performance history yet.")
+    else:
+        st.caption(
+            "Daily return and drawdown are meaningful only when snapshots are consistent over time."
+        )
+
+        st.line_chart(
+            performance_history.set_index("snapshot_date")[
+                ["total_value_eur", "running_peak_eur"]
+            ]
+        )
+
+        st.line_chart(
+            performance_history.set_index("snapshot_date")[
+                ["drawdown_pct"]
+            ]
+        )
+
+        st.dataframe(performance_history, use_container_width=True)
 
 with tab2:
     st.header("Portfolio Valuation")
