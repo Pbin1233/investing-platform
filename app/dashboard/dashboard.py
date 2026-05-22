@@ -6,6 +6,7 @@ from app.portfolio.realized_gains import calculate_all_realized_gains
 from app.portfolio.portfolio_value import calculate_portfolio
 from app.portfolio.broker_cash import calculate_broker_cash
 from app.portfolio.yearly_summary import calculate_yearly_summary
+from app.portfolio.allocation import allocation_by_ticker, allocation_by_broker, concentration_metrics
 from app.portfolio.xirr import calculate_portfolio_xirr, calculate_broker_xirr, calculate_position_xirr
 from app.portfolio.benchmark import benchmark_xirr
 from app.database.connection import get_engine
@@ -164,6 +165,27 @@ with tab2:
         col4.metric("Unrealized P/L %", f"{unrealized_pct:,.2f}%")
 
         st.dataframe(portfolio, use_container_width=True)
+
+        st.subheader("Allocation")
+
+        concentration = concentration_metrics()
+
+        if concentration:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Top Position", f"{concentration['top_1_pct']:,.2f}%")
+            c2.metric("Top 3 Positions", f"{concentration['top_3_pct']:,.2f}%")
+            c3.metric("Positions", f"{concentration['position_count']}")
+
+        ticker_alloc = allocation_by_ticker()
+
+        if not ticker_alloc.empty:
+            st.dataframe(ticker_alloc, use_container_width=True)
+
+        broker_alloc = allocation_by_broker()
+
+        if not broker_alloc.empty:
+            st.subheader("Broker Allocation")
+            st.dataframe(broker_alloc, use_container_width=True)
 
         st.subheader("Position XIRR")
 
