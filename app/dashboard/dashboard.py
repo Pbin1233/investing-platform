@@ -5,7 +5,7 @@ from sqlalchemy import text
 from app.portfolio.realized_gains import calculate_all_realized_gains
 from app.portfolio.portfolio_value import calculate_portfolio
 from app.portfolio.broker_cash import calculate_broker_cash
-from app.portfolio.xirr import calculate_portfolio_xirr
+from app.portfolio.xirr import calculate_portfolio_xirr, calculate_broker_xirr
 from app.portfolio.benchmark import benchmark_xirr
 from app.database.connection import get_engine
 
@@ -94,6 +94,28 @@ with tab1:
         st.caption(
             "Benchmark comparison is FX-aware and uses the same external cash-flow dates."
         )
+
+        broker_xirr = calculate_broker_xirr()
+
+        if not broker_xirr.empty:
+            broker_display = broker_xirr.copy()
+            broker_display["xirr_pct"] = broker_display["xirr"].apply(
+                lambda x: None if pd.isna(x) else x * 100
+            )
+
+            st.subheader("Broker Performance")
+            st.dataframe(
+                broker_display[
+                    [
+                        "broker_name",
+                        "as_of_date",
+                        "xirr_pct",
+                        "cash_flow_count",
+                        "terminal_value_eur",
+                    ]
+                ],
+                use_container_width=True,
+            )
 
     except Exception as exc:
         st.warning(f"Performance metrics unavailable: {exc}")
