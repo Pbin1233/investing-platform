@@ -7,3 +7,5 @@ numpy-financial
 yfinance
 
 python-dotenv
+
+numpy-financial
