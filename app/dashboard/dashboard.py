@@ -8,6 +8,7 @@ from app.portfolio.broker_cash import calculate_broker_cash
 from app.portfolio.yearly_summary import calculate_yearly_summary
 from app.portfolio.allocation import allocation_by_ticker, allocation_by_broker, concentration_metrics
 from app.portfolio.performance_history import calculate_performance_history
+from app.market_data.price_analytics import calculate_price_analytics
 from app.portfolio.xirr import calculate_portfolio_xirr, calculate_broker_xirr, calculate_position_xirr
 from app.portfolio.benchmark import benchmark_xirr
 from app.database.connection import get_engine
@@ -22,13 +23,14 @@ def read_sql(query: str) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(query), conn)
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "Dashboard",
     "Portfolio",
     "Transactions",
     "Dividends",
     "Realized Gains",
     "Yearly Summary",
+    "Market Analytics",
 ])
 
 with tab1:
@@ -332,3 +334,18 @@ with tab6:
             "Estimated Tax EUR",
             f"{latest['estimated_capital_gains_tax_eur']:,.2f}"
         )
+
+
+with tab7:
+    st.header("Market Analytics")
+
+    price_analytics = calculate_price_analytics()
+
+    if price_analytics.empty:
+        st.info("No historical price analytics available yet.")
+    else:
+        st.caption(
+            "Returns, volatility, and drawdown are based on stored daily EUR-adjusted prices."
+        )
+
+        st.dataframe(price_analytics, use_container_width=True)
