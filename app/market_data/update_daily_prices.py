@@ -101,7 +101,7 @@ def update_daily_prices(start_date: date | None = None, end_date: date | None = 
         end_date = date.today()
 
     if start_date is None:
-        start_date = end_date - timedelta(days=10)
+        start_date = end_date - timedelta(days=365)
 
     securities = fetch_securities(engine)
     rows_processed = 0
