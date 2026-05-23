@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from app.ops.job_runs import start_job, finish_job
 from app.market_data.update_prices import main as update_prices
+from app.market_data.update_daily_prices import update_daily_prices
 from app.snapshots.snapshot_portfolio import snapshot_portfolio
 
 
@@ -53,6 +54,7 @@ def main():
 
     pipeline = [
         ("update_prices", update_prices),
+        ("update_daily_prices", update_daily_prices),
         ("snapshot_portfolio", snapshot_portfolio),
         ("backup_database", run_backup),
     ]
