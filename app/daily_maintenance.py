@@ -6,6 +6,7 @@ from app.ops.job_runs import start_job, finish_job
 from app.market_data.update_prices import main as update_prices
 from app.market_data.update_daily_prices import update_daily_prices
 from app.snapshots.snapshot_portfolio import snapshot_portfolio
+from app.ops.data_quality import run_all_checks
 
 
 def run_stage(stage_name, func):
@@ -35,6 +36,20 @@ def run_stage(stage_name, func):
         }
 
 
+def run_data_quality_checks():
+    checks = run_all_checks()
+    failures = {
+        name: len(df)
+        for name, df in checks.items()
+        if not df.empty
+    }
+
+    if failures:
+        raise RuntimeError(f"Data quality issues found: {failures}")
+
+    return "All data quality checks passed"
+
+
 def run_backup():
     result = subprocess.run(
         ["sh", "app/scripts/backup_database.sh"],
@@ -57,6 +72,7 @@ def main():
         ("update_daily_prices", update_daily_prices),
         ("snapshot_portfolio", snapshot_portfolio),
         ("backup_database", run_backup),
+        ("data_quality", run_data_quality_checks),
     ]
 
     for stage_name, func in pipeline:
