@@ -9,6 +9,7 @@ from app.portfolio.yearly_summary import calculate_yearly_summary
 from app.portfolio.allocation import allocation_by_ticker, allocation_by_broker, concentration_metrics
 from app.portfolio.performance_history import calculate_performance_history
 from app.market_data.price_analytics import calculate_price_analytics
+from app.ops.data_quality import run_all_checks
 from app.portfolio.xirr import calculate_portfolio_xirr, calculate_broker_xirr, calculate_position_xirr
 from app.portfolio.benchmark import benchmark_xirr
 from app.database.connection import get_engine
