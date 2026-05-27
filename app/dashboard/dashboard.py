@@ -5,7 +5,10 @@ from sqlalchemy import text
 from app.portfolio.realized_gains import calculate_all_realized_gains
 from app.portfolio.portfolio_value import calculate_portfolio
 from app.portfolio.broker_cash import calculate_broker_cash
-from app.portfolio.yearly_summary import calculate_yearly_summary
+from app.portfolio.yearly_summary import (
+    calculate_yearly_summary,
+    calculate_yearly_summary_by_broker,
+)
 from app.portfolio.allocation import allocation_by_ticker, allocation_by_broker, concentration_metrics
 from app.portfolio.performance_history import calculate_performance_history
 from app.market_data.price_analytics import calculate_price_analytics
@@ -71,7 +74,7 @@ with tab1:
         col2.metric("Securities EUR", f"{total_securities:,.2f}")
         col3.metric("Total Account Value EUR", f"{total_account:,.2f}")
 
-        st.dataframe(summary, use_container_width=True)
+        st.dataframe(summary, width="stretch")
 
     st.subheader("Performance")
 
@@ -121,7 +124,7 @@ with tab1:
                         "terminal_value_eur",
                     ]
                 ],
-                use_container_width=True,
+                width="stretch",
             )
 
     except Exception as exc:
@@ -172,7 +175,7 @@ with tab1:
             ]
         )
 
-        st.dataframe(performance_history, use_container_width=True)
+        st.dataframe(performance_history, width="stretch")
 
 with tab2:
     st.header("Portfolio Valuation")
@@ -193,7 +196,7 @@ with tab2:
         col3.metric("Unrealized P/L EUR", f"{unrealized:,.2f}")
         col4.metric("Unrealized P/L %", f"{unrealized_pct:,.2f}%")
 
-        st.dataframe(portfolio, use_container_width=True)
+        st.dataframe(portfolio, width="stretch")
 
         st.subheader("Allocation")
 
@@ -208,13 +211,13 @@ with tab2:
         ticker_alloc = allocation_by_ticker()
 
         if not ticker_alloc.empty:
-            st.dataframe(ticker_alloc, use_container_width=True)
+            st.dataframe(ticker_alloc, width="stretch")
 
         broker_alloc = allocation_by_broker()
 
         if not broker_alloc.empty:
             st.subheader("Broker Allocation")
-            st.dataframe(broker_alloc, use_container_width=True)
+            st.dataframe(broker_alloc, width="stretch")
 
         st.subheader("Position XIRR")
 
@@ -238,7 +241,7 @@ with tab2:
                         "terminal_value_eur",
                     ]
                 ],
-                use_container_width=True,
+                width="stretch",
             )
 
 with tab3:
@@ -261,7 +264,7 @@ with tab3:
         LIMIT 1000
     """)
 
-    st.dataframe(transactions, use_container_width=True)
+    st.dataframe(transactions, width="stretch")
 
 with tab4:
     st.header("Dividends")
@@ -287,7 +290,7 @@ with tab4:
     else:
         total_net = pd.to_numeric(dividends["net_amount_eur"]).sum()
         st.metric("Total Net Dividends EUR", f"{total_net:,.2f}")
-        st.dataframe(dividends, use_container_width=True)
+        st.dataframe(dividends, width="stretch")
 
 with tab5:
     st.header("Realized Gains - LIFO")
@@ -297,7 +300,7 @@ with tab5:
     if gains.empty:
         st.info("No realized gains found.")
     else:
-        st.dataframe(gains, use_container_width=True)
+        st.dataframe(gains, width="stretch")
 
         total_gain = pd.to_numeric(gains["realized_gain_eur"]).sum()
         estimated_tax = total_gain * 0.26
@@ -315,27 +318,44 @@ with tab6:
     if summary.empty:
         st.info("No yearly summary data available.")
     else:
-        st.dataframe(summary, use_container_width=True)
+        st.subheader("Consolidated tax estimate")
+        st.dataframe(summary, width="stretch")
 
         latest = summary.sort_values("year").iloc[-1]
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
 
         col1.metric(
             "Latest Year Net Deposits EUR",
-            f"{latest['net_external_cash_flow_eur']:,.2f}"
+            f"{latest['net_external_cash_flow_eur']:,.2f}",
         )
 
         col2.metric(
             "Latest Year Dividends EUR",
-            f"{latest['net_dividends_eur']:,.2f}"
+            f"{latest['net_dividends_eur']:,.2f}",
         )
 
         col3.metric(
-            "Estimated Tax EUR",
-            f"{latest['estimated_capital_gains_tax_eur']:,.2f}"
+            "Capital Gains Tax EUR",
+            f"{latest['estimated_capital_gains_tax_eur']:,.2f}",
         )
 
+        col4.metric(
+            "IVAFE EUR",
+            f"{latest['estimated_ivafe_eur']:,.2f}",
+        )
+
+    broker_summary = calculate_yearly_summary_by_broker()
+
+    if not broker_summary.empty:
+        st.subheader("Broker breakdown")
+
+        st.caption(
+            "Broker-level capital gains tax is shown before cross-broker netting. "
+            "Use the consolidated table above for the final tax estimate."
+        )
+
+        st.dataframe(broker_summary, width="stretch", hide_index=True)
 
 with tab7:
     st.header("Market Analytics")
@@ -349,4 +369,4 @@ with tab7:
             "Returns, volatility, and drawdown are based on stored daily EUR-adjusted prices."
         )
 
-        st.dataframe(price_analytics, use_container_width=True)
+        st.dataframe(price_analytics, width="stretch")
