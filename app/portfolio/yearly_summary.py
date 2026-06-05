@@ -35,27 +35,6 @@ def calculate_yearly_summary() -> pd.DataFrame:
         engine,
     )
 
-    snapshots = pd.read_sql(
-        text("""
-            WITH ranked AS (
-                SELECT
-                    EXTRACT(YEAR FROM snapshot_date)::INT AS year,
-                    snapshot_date,
-                    SUM(market_value_eur) AS year_end_market_value_eur,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY EXTRACT(YEAR FROM snapshot_date)::INT
-                        ORDER BY snapshot_date DESC
-                    ) AS rn
-                FROM portfolio_snapshots
-                GROUP BY snapshot_date
-            )
-            SELECT year, snapshot_date AS year_end_snapshot_date, year_end_market_value_eur
-            FROM ranked
-            WHERE rn = 1
-        """),
-        engine,
-    )
-
     gains = calculate_all_realized_gains()
 
     if gains.empty:
@@ -69,7 +48,7 @@ def calculate_yearly_summary() -> pd.DataFrame:
             .sum()
         )
 
-    frames = [cash_flows, dividends, snapshots, realized]
+    frames = [cash_flows, dividends, realized]
     years = sorted(
         set().union(*[
             set(df["year"].dropna().astype(int))
@@ -90,7 +69,6 @@ def calculate_yearly_summary() -> pd.DataFrame:
         "gross_dividends_eur",
         "withholding_tax_eur",
         "net_dividends_eur",
-        "year_end_market_value_eur",
         "realized_gain_eur",
     ]
 
@@ -135,33 +113,6 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
         engine,
     )
 
-    snapshots = pd.read_sql(
-        text("""
-            WITH ranked AS (
-                SELECT
-                    EXTRACT(YEAR FROM snapshot_date)::INT AS year,
-                    broker_name,
-                    snapshot_date,
-                    SUM(market_value_eur) AS year_end_market_value_eur,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY EXTRACT(YEAR FROM snapshot_date)::INT, broker_name
-                        ORDER BY snapshot_date DESC
-                    ) AS rn
-                FROM portfolio_snapshots
-                WHERE broker_name <> 'TOTAL'
-                GROUP BY year, broker_name, snapshot_date
-            )
-            SELECT
-                year,
-                broker_name,
-                snapshot_date AS year_end_snapshot_date,
-                year_end_market_value_eur
-            FROM ranked
-            WHERE rn = 1
-        """),
-        engine,
-    )
-
     gains = calculate_all_realized_gains()
 
     if gains.empty:
@@ -177,7 +128,7 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
             .sum()
         )
 
-    frames = [cash_flows, dividends, snapshots, realized]
+    frames = [cash_flows, dividends, realized]
 
     keys = pd.concat(
         [
@@ -203,7 +154,6 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
         "gross_dividends_eur",
         "withholding_tax_eur",
         "net_dividends_eur",
-        "year_end_market_value_eur",
         "realized_gain_eur",
     ]
 

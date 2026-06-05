@@ -54,7 +54,8 @@ The system summarizes imported tax-relevant broker data for:
 * dividend withholding
 * yearly broker activity
 
-It does not apply fixed-rate tax estimates in the dashboard.
+It does not compute final tax liabilities or apply fixed-rate estimates in the
+dashboard.
 
 ---
 
