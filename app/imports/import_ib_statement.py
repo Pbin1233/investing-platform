@@ -359,6 +359,7 @@ def _find_existing_cash_flow(conn, row: dict) -> int | None:
               AND amount = :amount
               AND currency = :currency
               AND fx_rate_to_eur = :fx_rate_to_eur
+              AND notes = :notes
             ORDER BY cash_flow_id
             LIMIT 1
         """),
