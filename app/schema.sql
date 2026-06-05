@@ -85,6 +85,16 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
     UNIQUE (snapshot_date, broker_name, ticker)
 );
 
+CREATE TABLE IF NOT EXISTS import_records (
+    import_record_id BIGSERIAL PRIMARY KEY,
+    source_system TEXT NOT NULL,
+    source_file TEXT NOT NULL,
+    source_hash TEXT NOT NULL UNIQUE,
+    target_table TEXT NOT NULL,
+    target_id BIGINT NOT NULL,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE OR REPLACE VIEW v_positions AS
 SELECT
     broker_name,
@@ -150,3 +160,9 @@ ON cash_flows (broker_name, flow_date);
 
 CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_date
 ON portfolio_snapshots (snapshot_date);
+
+CREATE INDEX IF NOT EXISTS idx_import_records_source_file
+ON import_records (source_system, source_file);
+
+CREATE INDEX IF NOT EXISTS idx_import_records_target
+ON import_records (target_table, target_id);

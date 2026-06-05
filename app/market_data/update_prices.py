@@ -16,6 +16,21 @@ def usd_to_eur_rate():
     return 1 / eur_usd
 
 
+def krw_to_eur_rate():
+    usdk_rw = yf.Ticker("USDKRW=X").history(period="1d")
+    eurusd = yf.Ticker("EURUSD=X").history(period="1d")
+
+    if usdk_rw.empty:
+        raise RuntimeError("Could not fetch USD/KRW rate")
+
+    if eurusd.empty:
+        raise RuntimeError("Could not fetch EUR/USD rate")
+
+    krw_per_usd = float(usdk_rw["Close"].iloc[-1])
+    usd_per_eur = float(eurusd["Close"].iloc[-1])
+    return 1 / (krw_per_usd * usd_per_eur)
+
+
 def fx_to_eur(currency):
     currency = currency.upper()
 
@@ -24,6 +39,9 @@ def fx_to_eur(currency):
 
     if currency == "USD":
         return usd_to_eur_rate()
+
+    if currency == "KRW":
+        return krw_to_eur_rate()
 
     raise RuntimeError(f"Unsupported quote currency: {currency}")
 

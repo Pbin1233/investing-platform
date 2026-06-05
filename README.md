@@ -196,6 +196,40 @@ python -m pytest
 
 ---
 
+# IBKR Statement Imports
+
+Broker statement CSVs can be parsed without replacing existing data.
+
+IBKR transaction statement CSVs:
+
+```bash
+python -m app.imports.import_ib_statement "test imports/ib/U19672266.TRANSACTIONS.20240528.20260604.csv"
+```
+
+DEGIRO account CSVs:
+
+```bash
+python -m app.imports.import_degiro_account "test imports/degiro/Account.csv"
+```
+
+Both commands default to a dry run. They normalize stock trades, dividends with
+withholding taxes, and cash deposits/withdrawals. Unsupported broker bookkeeping
+rows, such as FX translation adjustments, cash sweep transfers, and stock split
+ledger rows, are reported as ignored rows.
+
+After reviewing the dry run and applying migrations, write new rows with:
+
+```bash
+python -m app.database.run_migrations
+python -m app.imports.import_ib_statement "path/to/ib_statement.csv" --apply
+python -m app.imports.import_degiro_account "path/to/degiro_account.csv" --apply
+```
+
+Applied imports are tracked in `import_records` using stable source hashes, so
+overlapping future IBKR exports can be imported without duplicating rows.
+
+---
+
 # Future Direction
 
 Planned or partially implemented ideas include:
