@@ -49,7 +49,7 @@ def main():
     for col in ["quantity", "price", "fees", "fx_rate_to_eur"]:
         df[col] = pd.to_numeric(df[col], errors="raise")
 
-    invalid_actions = sorted(set(df["action"]) - {"BUY", "SELL"})
+    invalid_actions = sorted(set(df["action"]) - {"BUY", "SELL", "SPLIT"})
     if invalid_actions:
         print(f"Invalid actions: {invalid_actions}")
         sys.exit(1)

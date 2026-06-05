@@ -41,6 +41,16 @@ def lifo_realized_gains(trades: Iterable[Trade]) -> list[RealizedGain]:
                 "unit_cost_eur": total_cost_eur / qty,
             })
 
+        elif trade.action == "SPLIT":
+            current_qty = sum(lot["quantity"] for lot in lots)
+            if current_qty <= 0:
+                raise ValueError("Stock split cannot be applied without open lots")
+
+            ratio = (current_qty + qty) / current_qty
+            for lot in lots:
+                lot["quantity"] *= ratio
+                lot["unit_cost_eur"] /= ratio
+
         elif trade.action == "SELL":
             qty_to_sell = qty
             proceeds_eur = (qty * price - fees) * fx

@@ -16,6 +16,7 @@ def check_negative_positions() -> pd.DataFrame:
                     CASE
                         WHEN action = 'BUY' THEN quantity
                         WHEN action = 'SELL' THEN -quantity
+                        WHEN action = 'SPLIT' THEN quantity
                         ELSE 0
                     END
                 ) AS quantity
@@ -25,6 +26,7 @@ def check_negative_positions() -> pd.DataFrame:
                 CASE
                     WHEN action = 'BUY' THEN quantity
                     WHEN action = 'SELL' THEN -quantity
+                    WHEN action = 'SPLIT' THEN quantity
                     ELSE 0
                 END
             ) < 0

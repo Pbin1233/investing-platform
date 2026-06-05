@@ -36,6 +36,15 @@ TRADE_RE = re.compile(
     r"\((?P<isin>[^)]+)\)$"
 )
 
+SPLIT_RE = re.compile(
+    r"^FRAZIONAMENTO AZIONARIO:\s+"
+    r"(?P<quantity>[\d.,]+)\s+"
+    r"(?P<name>.+)\s+@\s+"
+    r"(?P<price>[\d.,]+)\s+"
+    r"(?P<currency>[A-Z]{3})\s+"
+    r"\((?P<isin>[^)]+)\)$"
+)
+
 
 @dataclass
 class DegiroRow:
@@ -213,8 +222,17 @@ def parse_degiro_account(path: str | Path, broker_name: str = "DEGIRO") -> Parse
     dividend_components = []
     cash_flows = []
     ignored = []
+    split_row_numbers = set()
+
+    for split_transaction in _build_split_transactions(rows, source_file, broker_name):
+        transactions.append(split_transaction)
+        split_row_numbers.update(split_transaction["source_rows"])
 
     for row in rows:
+        if row.row_number in split_row_numbers:
+            ignored.append(_ignored_row(row, "stock split represented as SPLIT transaction"))
+            continue
+
         trade_match = TRADE_RE.match(row.description)
         if trade_match:
             group = order_groups.get(row.order_id, [row])
@@ -409,9 +427,6 @@ def _should_ignore(row: DegiroRow) -> bool:
     if row.description.lower().startswith("degiro costi di transazione"):
         return True
 
-    if row.description.startswith("FRAZIONAMENTO AZIONARIO"):
-        return True
-
     return False
 
 
@@ -426,6 +441,71 @@ def _ignored_row(row: DegiroRow, reason: str) -> dict:
         "reason": reason,
         "source_hash": row.source_hash,
     }
+
+
+def _build_split_transactions(
+    rows: list[DegiroRow],
+    source_file: str,
+    broker_name: str,
+) -> list[dict]:
+    grouped: dict[tuple[str, str], list[tuple[DegiroRow, dict]]] = {}
+
+    for row in rows:
+        match = SPLIT_RE.match(row.description)
+        if not match:
+            continue
+
+        ticker = _ticker(match.group("isin"), row.product)
+        grouped.setdefault((row.value_date, ticker), []).append((row, match.groupdict()))
+
+    transactions = []
+    for (value_date, ticker), group in grouped.items():
+        if len(group) != 2:
+            continue
+
+        parsed = [
+            (
+                row,
+                data,
+                _decimal(data["quantity"]) or Decimal("0"),
+            )
+            for row, data in group
+        ]
+        old_row, old_data, old_qty = min(parsed, key=lambda item: item[2])
+        new_row, new_data, new_qty = max(parsed, key=lambda item: item[2])
+
+        if new_qty <= old_qty:
+            continue
+
+        additional_qty = new_qty - old_qty
+        row_numbers = [old_row.row_number, new_row.row_number]
+        transactions.append(
+            {
+                "trade_date": value_date,
+                "broker_name": broker_name,
+                "ticker": ticker,
+                "asset_name": new_row.product or new_data["name"].strip(),
+                "action": "SPLIT",
+                "quantity": additional_qty,
+                "price": Decimal("0"),
+                "fees": Decimal("0"),
+                "currency": new_data["currency"],
+                "fx_rate_to_eur": Decimal("1"),
+                "notes": _note(
+                    source_file,
+                    row_numbers,
+                    f"Stock split {old_qty} to {new_qty}",
+                ),
+                "source_hash": _combined_hash(
+                    source_file,
+                    [old_row.source_hash, new_row.source_hash],
+                ),
+                "source_file": source_file,
+                "source_rows": sorted(row_numbers),
+            }
+        )
+
+    return transactions
 
 
 def main():

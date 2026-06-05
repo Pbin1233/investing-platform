@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     broker_name TEXT NOT NULL,
     ticker TEXT NOT NULL,
     asset_name TEXT,
-    action TEXT NOT NULL CHECK (action IN ('BUY', 'SELL')),
+    action TEXT NOT NULL CHECK (action IN ('BUY', 'SELL', 'SPLIT')),
     quantity NUMERIC(20, 8) NOT NULL CHECK (quantity > 0),
     price NUMERIC(20, 8) NOT NULL CHECK (price >= 0),
     fees NUMERIC(20, 8) NOT NULL DEFAULT 0,
@@ -103,6 +103,7 @@ SELECT
         CASE
             WHEN action = 'BUY' THEN quantity
             WHEN action = 'SELL' THEN -quantity
+            WHEN action = 'SPLIT' THEN quantity
         END
     ) AS quantity
 FROM transactions
@@ -111,6 +112,7 @@ HAVING SUM(
         CASE
             WHEN action = 'BUY' THEN quantity
             WHEN action = 'SELL' THEN -quantity
+            WHEN action = 'SPLIT' THEN quantity
         END
     ) <> 0;
 
@@ -121,10 +123,12 @@ SELECT
     CASE
         WHEN action = 'BUY' THEN quantity * price + fees
         WHEN action = 'SELL' THEN quantity * price - fees
+        WHEN action = 'SPLIT' THEN 0
     END AS trade_value_native,
     CASE
         WHEN action = 'BUY' THEN (quantity * price + fees) * fx_rate_to_eur
         WHEN action = 'SELL' THEN (quantity * price - fees) * fx_rate_to_eur
+        WHEN action = 'SPLIT' THEN 0
     END AS trade_value_eur
 FROM transactions;
 

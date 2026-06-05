@@ -20,6 +20,7 @@ def test_parse_degiro_account_normalizes_trade_group_dividends_and_deposits(tmp_
                 '02-07-2024,07:30,01-07-2024,,,Prelievo FX,"1,0767",USD,"-13,39",USD,"0,00",',
                 '05-05-2024,18:02,30-04-2024,,,DEGIRO Costi di connessione 2024 (Nasdaq - NDQ),,EUR,"-2,50",EUR,"693,97",',
                 '10-06-2024,10:51,10-06-2024,NVIDIA CORP,US67066G1040,"FRAZIONAMENTO AZIONARIO: 50 NVIDIA Corp @ 120,888 USD (US67066G1040)",,USD,"-6044,40",USD,"0,00",',
+                '10-06-2024,10:51,10-06-2024,NVIDIA CORP,US67066G1040,"FRAZIONAMENTO AZIONARIO: 5 NVIDIA Corp @ 1.208,88 USD (US67066G1040)",,USD,"6044,40",USD,"6044,40",',
             ]
         ),
         encoding="utf-8",
@@ -27,12 +28,12 @@ def test_parse_degiro_account_normalizes_trade_group_dividends_and_deposits(tmp_
 
     parsed = parse_degiro_account(path)
 
-    assert len(parsed.transactions) == 1
+    assert len(parsed.transactions) == 2
     assert len(parsed.dividends) == 1
     assert len(parsed.cash_flows) == 2
-    assert len(parsed.ignored) == 6
+    assert len(parsed.ignored) == 7
 
-    trade = parsed.transactions.iloc[0]
+    trade = parsed.transactions[parsed.transactions["action"] == "BUY"].iloc[0]
     assert trade["ticker"] == "AVGO"
     assert trade["action"] == "BUY"
     assert trade["quantity"] == Decimal("3")
@@ -40,6 +41,11 @@ def test_parse_degiro_account_normalizes_trade_group_dividends_and_deposits(tmp_
     assert trade["currency"] == "USD"
     assert trade["fx_rate_to_eur"] == Decimal("3674.44") / Decimal("3944.91")
     assert trade["fees"] == Decimal("2.00") / trade["fx_rate_to_eur"]
+
+    split = parsed.transactions[parsed.transactions["action"] == "SPLIT"].iloc[0]
+    assert split["ticker"] == "NVDA"
+    assert split["quantity"] == Decimal("45")
+    assert split["price"] == Decimal("0")
 
     dividend = parsed.dividends.iloc[0]
     assert dividend["ticker"] == "AVGO"
