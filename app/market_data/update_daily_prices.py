@@ -1,3 +1,4 @@
+import argparse
 from datetime import date, timedelta
 
 import pandas as pd
@@ -160,7 +161,11 @@ def upsert_daily_price(
         )
 
 
-def update_daily_prices(start_date: date | None = None, end_date: date | None = None) -> int:
+def update_daily_prices(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    tickers: list[str] | None = None,
+) -> int:
     engine = get_engine()
 
     if end_date is None:
@@ -170,6 +175,11 @@ def update_daily_prices(start_date: date | None = None, end_date: date | None = 
         start_date = end_date - timedelta(days=10)
 
     securities = fetch_securities(engine)
+    if tickers:
+        requested = {ticker.upper() for ticker in tickers}
+        securities = securities[
+            securities["ticker"].str.upper().isin(requested)
+        ]
     rows_processed = 0
     fx_history_cache: dict[str, pd.DataFrame] = {}
 
@@ -220,7 +230,17 @@ def update_daily_prices(start_date: date | None = None, end_date: date | None = 
 
 
 def main():
-    rows = update_daily_prices()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start-date", type=date.fromisoformat)
+    parser.add_argument("--end-date", type=date.fromisoformat)
+    parser.add_argument("--ticker", action="append", dest="tickers")
+    args = parser.parse_args()
+
+    rows = update_daily_prices(
+        start_date=args.start_date,
+        end_date=args.end_date,
+        tickers=args.tickers,
+    )
     print(f"Daily prices updated. Rows processed: {rows}")
 
 
