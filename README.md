@@ -10,7 +10,7 @@ The project started as a replacement for a large spreadsheet-based workflow and 
 * realized gain calculations
 * benchmark comparison
 * XIRR analytics
-* withholding and yearly tax inputs
+* withholding and yearly tax estimates
 * historical market data storage
 * allocation analytics
 * automated maintenance jobs
@@ -46,16 +46,21 @@ The platform is designed to be incremental and extensible. New analytics and res
 * Volatility estimation
 * Drawdown tracking
 
-## Tax Inputs
+## Tax Estimates
 
-The system summarizes imported tax-relevant broker data for:
+The system summarizes imported tax-relevant broker data and computes yearly
+estimates for:
 
 * realized gains
 * dividend withholding
+* dividend tax due after withholding
+* 0.2% IVAFE based on real year-end market value
 * yearly broker activity
 
-It does not compute final tax liabilities or apply fixed-rate estimates in the
-dashboard.
+Year-end market value is calculated from positions held at 31 December and the
+latest stored EUR-adjusted price on or before that date. If a held position has
+no available price for that year-end, the yearly summary exposes it through
+`year_end_unpriced_positions`.
 
 ---
 

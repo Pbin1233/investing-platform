@@ -342,6 +342,28 @@ with tab6:
             f"{latest['realized_gain_eur']:,.2f}",
         )
 
+        col5, col6, col7, col8 = st.columns(4)
+
+        col5.metric(
+            "Latest Year-End Value EUR",
+            f"{latest['year_end_market_value_eur']:,.2f}",
+        )
+
+        col6.metric(
+            "Latest Year Capital Gains Tax EUR",
+            f"{latest['capital_gains_tax_eur']:,.2f}",
+        )
+
+        col7.metric(
+            "Latest Year IVAFE EUR",
+            f"{latest['ivafe_tax_eur']:,.2f}",
+        )
+
+        col8.metric(
+            "Latest Year Tax Due After Withholding EUR",
+            f"{latest['estimated_tax_due_after_withholding_eur']:,.2f}",
+        )
+
     broker_summary = calculate_yearly_summary_by_broker()
 
     if not broker_summary.empty:
