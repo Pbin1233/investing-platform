@@ -161,6 +161,48 @@ def upsert_daily_price(
         )
 
 
+def upsert_daily_prices(engine, rows: list[dict]) -> None:
+    if not rows:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO daily_prices (
+                    ticker,
+                    price_symbol,
+                    price_date,
+                    close_price,
+                    currency,
+                    fx_rate_to_eur,
+                    close_price_eur,
+                    volume,
+                    source
+                )
+                VALUES (
+                    :ticker,
+                    :price_symbol,
+                    :price_date,
+                    :close_price,
+                    :currency,
+                    :fx_rate_to_eur,
+                    :close_price_eur,
+                    :volume,
+                    'yfinance'
+                )
+                ON CONFLICT (ticker, price_date, source)
+                DO UPDATE SET
+                    price_symbol = EXCLUDED.price_symbol,
+                    close_price = EXCLUDED.close_price,
+                    currency = EXCLUDED.currency,
+                    fx_rate_to_eur = EXCLUDED.fx_rate_to_eur,
+                    close_price_eur = EXCLUDED.close_price_eur,
+                    volume = EXCLUDED.volume
+            """),
+            rows,
+        )
+
+
 def update_daily_prices(
     start_date: date | None = None,
     end_date: date | None = None,
@@ -211,20 +253,27 @@ def update_daily_prices(
         hist = _merge_fx_rates(hist, fx_history_cache[currency])
         hist = hist.dropna(subset=["fx_rate_to_eur"])
 
+        rows = []
         for row in hist.itertuples(index=False):
-            upsert_daily_price(
-                engine=engine,
-                ticker=security.ticker,
-                price_symbol=security.price_symbol,
-                price_date=row.price_date,
-                close_price=float(row.Close),
-                currency=security.quote_currency,
-                fx_rate_to_eur=float(row.fx_rate_to_eur),
-                volume=None if pd.isna(row.Volume) else int(row.Volume),
+            close_price = float(row.Close)
+            fx_rate_to_eur = float(row.fx_rate_to_eur)
+            rows.append(
+                {
+                    "ticker": security.ticker,
+                    "price_symbol": security.price_symbol,
+                    "price_date": row.price_date,
+                    "close_price": close_price,
+                    "currency": security.quote_currency,
+                    "fx_rate_to_eur": fx_rate_to_eur,
+                    "close_price_eur": close_price * fx_rate_to_eur,
+                    "volume": None if pd.isna(row.Volume) else int(row.Volume),
+                }
             )
-            rows_processed += 1
 
-        print(f"{security.ticker}: stored {len(hist)} daily prices")
+        upsert_daily_prices(engine, rows)
+        rows_processed += len(rows)
+
+        print(f"{security.ticker}: stored {len(rows)} daily prices", flush=True)
 
     return rows_processed
 
