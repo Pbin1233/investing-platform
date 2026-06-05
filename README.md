@@ -10,7 +10,7 @@ The project started as a replacement for a large spreadsheet-based workflow and 
 * realized gain calculations
 * benchmark comparison
 * XIRR analytics
-* tax estimation
+* withholding and yearly tax inputs
 * historical market data storage
 * allocation analytics
 * automated maintenance jobs
@@ -46,15 +46,15 @@ The platform is designed to be incremental and extensible. New analytics and res
 * Volatility estimation
 * Drawdown tracking
 
-## Tax Estimation
+## Tax Inputs
 
-The system includes rough Italian tax estimates for:
+The system summarizes imported tax-relevant broker data for:
 
-* capital gains
-* dividends
-* IVAFE
+* realized gains
+* dividend withholding
+* yearly broker activity
 
-These are indicative calculations only.
+It does not apply fixed-rate tax estimates in the dashboard.
 
 ---
 

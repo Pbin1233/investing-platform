@@ -303,11 +303,8 @@ with tab5:
         st.dataframe(gains, width="stretch")
 
         total_gain = pd.to_numeric(gains["realized_gain_eur"]).sum()
-        estimated_tax = total_gain * 0.26
 
-        col1, col2 = st.columns(2)
-        col1.metric("Total Realized Gain EUR", f"{total_gain:,.2f}")
-        col2.metric("Estimated 26% Tax EUR", f"{estimated_tax:,.2f}")
+        st.metric("Total Realized Gain EUR", f"{total_gain:,.2f}")
 
 
 with tab6:
@@ -318,7 +315,7 @@ with tab6:
     if summary.empty:
         st.info("No yearly summary data available.")
     else:
-        st.subheader("Consolidated tax estimate")
+        st.subheader("Consolidated yearly summary")
         st.dataframe(summary, width="stretch")
 
         latest = summary.sort_values("year").iloc[-1]
@@ -336,24 +333,19 @@ with tab6:
         )
 
         col3.metric(
-            "Capital Gains Tax EUR",
-            f"{latest['estimated_capital_gains_tax_eur']:,.2f}",
+            "Latest Year Withholding EUR",
+            f"{latest['withholding_tax_eur']:,.2f}",
         )
 
         col4.metric(
-            "IVAFE EUR",
-            f"{latest['estimated_ivafe_eur']:,.2f}",
+            "Latest Year Realized Gain EUR",
+            f"{latest['realized_gain_eur']:,.2f}",
         )
 
     broker_summary = calculate_yearly_summary_by_broker()
 
     if not broker_summary.empty:
         st.subheader("Broker breakdown")
-
-        st.caption(
-            "Broker-level capital gains tax is shown before cross-broker netting. "
-            "Use the consolidated table above for the final tax estimate."
-        )
 
         st.dataframe(broker_summary, width="stretch", hide_index=True)
 

@@ -103,28 +103,6 @@ def calculate_yearly_summary() -> pd.DataFrame:
         summary["deposits_eur"] - summary["withdrawals_eur"]
     )
 
-    summary["estimated_capital_gains_tax_eur"] = (
-        summary["realized_gain_eur"].clip(lower=0) * 0.26
-    )
-
-    summary["estimated_dividend_tax_eur"] = (
-        summary["gross_dividends_eur"].clip(lower=0) * 0.26
-    )
-
-    summary["estimated_total_tax_eur"] = (
-        summary["estimated_capital_gains_tax_eur"]
-        + summary["estimated_dividend_tax_eur"]
-    )
-
-    summary["estimated_ivafe_eur"] = (
-        summary["year_end_market_value_eur"].clip(lower=0) * 0.002
-    )
-
-    summary["estimated_total_tax_with_ivafe_eur"] = (
-        summary["estimated_total_tax_eur"]
-        + summary["estimated_ivafe_eur"]
-    )
-
     return summary.sort_values("year")
 
 def calculate_yearly_summary_by_broker() -> pd.DataFrame:
@@ -238,19 +216,6 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
     summary["net_external_cash_flow_eur"] = (
         summary["deposits_eur"] - summary["withdrawals_eur"]
     )
-
-    summary["estimated_capital_gains_tax_before_cross_broker_netting_eur"] = (
-        summary["realized_gain_eur"].clip(lower=0) * 0.26
-    )
-
-    summary["estimated_dividend_tax_eur"] = (
-        summary["gross_dividends_eur"].clip(lower=0) * 0.26
-    )
-
-    summary["estimated_ivafe_eur"] = (
-        summary["year_end_market_value_eur"].clip(lower=0) * 0.002
-    )
-    summary = summary
 
     return summary.sort_values(["year", "broker_name"])
 
