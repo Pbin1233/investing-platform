@@ -76,6 +76,7 @@ def _year_end_market_values(
                     FROM daily_prices
                     WHERE ticker = p.ticker
                       AND price_date <= p.year_end_date
+                      AND close_price_eur::TEXT <> 'NaN'
 
                     UNION ALL
 
@@ -86,6 +87,7 @@ def _year_end_market_values(
                     FROM prices
                     WHERE ticker = p.ticker
                       AND price_date <= p.year_end_date
+                      AND (close_price * fx_rate_to_eur)::TEXT <> 'NaN'
                 ) candidate_prices
                 ORDER BY price_date DESC, sort_id DESC
                 LIMIT 1

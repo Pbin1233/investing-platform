@@ -64,7 +64,11 @@ def fetch_price(price_symbol):
     if hist.empty:
         return None
 
-    return float(hist["Close"].iloc[-1])
+    close_price = hist["Close"].iloc[-1]
+    if pd.isna(close_price):
+        return None
+
+    return float(close_price)
 
 
 def upsert_price(engine, ticker, close_price, currency, fx_rate_to_eur):
