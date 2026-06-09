@@ -58,7 +58,6 @@ def _positive(value: Decimal | None) -> Decimal:
 def _row_hash(source_file: str, row_number: int, row: list[str]) -> str:
     payload = json.dumps(
         {
-            "source_file": source_file,
             "row_number": row_number,
             "row": row,
         },
@@ -70,7 +69,6 @@ def _row_hash(source_file: str, row_number: int, row: list[str]) -> str:
 def _combined_hash(source_file: str, row_hashes: list[str]) -> str:
     payload = json.dumps(
         {
-            "source_file": source_file,
             "component_hashes": sorted(row_hashes),
         },
         sort_keys=True,
@@ -359,7 +357,6 @@ def _find_existing_cash_flow(conn, row: dict) -> int | None:
               AND amount = :amount
               AND currency = :currency
               AND fx_rate_to_eur = :fx_rate_to_eur
-              AND notes = :notes
             ORDER BY cash_flow_id
             LIMIT 1
         """),

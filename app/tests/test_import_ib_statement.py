@@ -1,6 +1,10 @@
 from decimal import Decimal
 
-from app.imports.import_ib_statement import parse_ib_statement
+from app.imports.import_ib_statement import (
+    _combined_hash,
+    _row_hash,
+    parse_ib_statement,
+)
 
 
 def test_parse_ib_statement_normalizes_trades_dividends_and_cash_flows(tmp_path):
@@ -45,3 +49,27 @@ def test_parse_ib_statement_normalizes_trades_dividends_and_cash_flows(tmp_path)
     cash_flow = parsed.cash_flows.iloc[0]
     assert cash_flow["flow_type"] == "DEPOSIT"
     assert cash_flow["amount"] == Decimal("4000.0")
+
+
+def test_ib_hashes_do_not_depend_on_export_filename():
+    row = [
+        "Transaction History",
+        "Data",
+        "2024-07-22",
+        "U123",
+        "Electronic Fund Transfer",
+        "Deposit",
+        "-",
+        "-",
+        "-",
+        "-",
+        "4000.0",
+        "-",
+        "4000.0",
+    ]
+
+    old_hash = _row_hash("U19672266.TRANSACTIONS.20240528.20260604.csv", 4, row)
+    new_hash = _row_hash("U19672266.TRANSACTIONS.20240528.20260608.csv", 4, row)
+
+    assert old_hash == new_hash
+    assert _combined_hash("old.csv", [old_hash]) == _combined_hash("new.csv", [new_hash])
