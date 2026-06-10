@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from app.ops.job_runs import start_job, finish_job
 from app.market_data.update_prices import main as update_prices
 from app.market_data.update_daily_prices import update_daily_prices
+from app.market_data.market_hours import market_sync_blockers_for_active_securities
 from app.snapshots.snapshot_portfolio import snapshot_portfolio
 from app.ops.data_quality import run_all_checks
 
@@ -66,6 +67,25 @@ def run_backup():
 def main():
     job_id = start_job("daily_maintenance")
     stages = []
+
+    blockers = market_sync_blockers_for_active_securities()
+    if blockers:
+        message = json.dumps(
+            {
+                "status": "skipped",
+                "reason": "market_open",
+                "blockers": blockers,
+            },
+            default=str,
+        )
+        finish_job(
+            job_id,
+            "success",
+            rows_processed=0,
+            message=message,
+        )
+        print(f"Daily maintenance skipped: {message}")
+        return
 
     pipeline = [
         ("update_prices", update_prices),

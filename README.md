@@ -120,6 +120,12 @@ Maintenance jobs are logged in the `job_runs` table with:
 * processed rows
 * structured stage metadata
 
+The daily maintenance job checks the exchanges used by active securities before
+updating prices or taking a snapshot. If any configured market is still open, it
+records the job as skipped so the dashboard does not mix closed-market and
+live/intraday prices. With the current holdings, a practical schedule is late
+evening in Europe/Rome after the US close and before the Korean market opens.
+
 ---
 
 # Historical Market Data
