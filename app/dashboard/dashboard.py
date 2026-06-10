@@ -24,6 +24,7 @@ from app.portfolio.yearly_summary import (
     calculate_yearly_summary,
     calculate_yearly_summary_by_broker,
 )
+from app.research.ideas.ideas import build_research_ideas, research_summary
 
 
 st.set_page_config(page_title="Investing Platform", layout="wide")
@@ -99,12 +100,13 @@ portfolio = calculate_portfolio()
 cash = calculate_broker_cash()
 yearly_summary = calculate_yearly_summary()
 
-overview_tab, holdings_tab, performance_tab, income_tab, activity_tab, market_tab, ops_tab = st.tabs(
+overview_tab, holdings_tab, performance_tab, income_tab, research_tab, activity_tab, market_tab, ops_tab = st.tabs(
     [
         "Overview",
         "Holdings",
         "Performance",
         "Income & Taxes",
+        "Research",
         "Activity",
         "Market Data",
         "Operations",
@@ -447,6 +449,104 @@ with income_tab:
             money(pd.to_numeric(gains["realized_gain_eur"]).sum()),
         )
         st.dataframe(gains, width="stretch", hide_index=True)
+
+
+with research_tab:
+    st.header("Research")
+    st.caption(
+        "Prototype watchlist and thesis tracker. Demo rows are illustrative and are not recommendations."
+    )
+
+    ideas = build_research_ideas()
+
+    if ideas.empty:
+        st.info("No research ideas yet.")
+    else:
+        summary = research_summary(ideas)
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Ideas", f"{summary['idea_count']}")
+        col2.metric("Owned", f"{summary['owned_count']}")
+        col3.metric("Watchlist", f"{summary['watch_count']}")
+        col4.metric(
+            "Average Score",
+            "n/a" if summary["avg_score"] is None else f"{summary['avg_score']:,.1f}",
+        )
+
+        filter_col1, filter_col2, filter_col3 = st.columns(3)
+        statuses = ["All"] + sorted(ideas["status"].dropna().unique())
+        themes = ["All"] + sorted(ideas["theme"].dropna().unique())
+        regions = ["All"] + sorted(ideas["region"].dropna().unique())
+
+        status = filter_col1.selectbox("Status", statuses, key="research_status")
+        theme = filter_col2.selectbox("Theme", themes, key="research_theme")
+        region = filter_col3.selectbox("Region", regions, key="research_region")
+
+        filtered_ideas = ideas.copy()
+        if status != "All":
+            filtered_ideas = filtered_ideas[filtered_ideas["status"] == status]
+        if theme != "All":
+            filtered_ideas = filtered_ideas[filtered_ideas["theme"] == theme]
+        if region != "All":
+            filtered_ideas = filtered_ideas[filtered_ideas["region"] == region]
+
+        st.subheader("Idea Pipeline")
+        st.dataframe(
+            filtered_ideas[
+                [
+                    "ticker",
+                    "company",
+                    "status",
+                    "theme",
+                    "region",
+                    "idea_score",
+                    "current_weight_pct",
+                    "target_weight_pct",
+                    "gap_to_target_pct",
+                    "next_action",
+                    "demo",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+        with st.expander("Thesis notes"):
+            st.dataframe(
+                filtered_ideas[
+                    [
+                        "ticker",
+                        "valuation_note",
+                        "quality_note",
+                        "risk_note",
+                        "last_reviewed",
+                    ]
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+
+        st.subheader("Target Gap")
+        target_gap = filtered_ideas[
+            filtered_ideas["target_weight_pct"] > 0
+        ].sort_values("gap_to_target_pct", ascending=False)
+
+        if target_gap.empty:
+            st.info("No target weights set for the filtered ideas.")
+        else:
+            st.dataframe(
+                target_gap[
+                    [
+                        "ticker",
+                        "current_weight_pct",
+                        "target_weight_pct",
+                        "gap_to_target_pct",
+                        "next_action",
+                    ]
+                ],
+                width="stretch",
+                hide_index=True,
+            )
 
 
 with activity_tab:

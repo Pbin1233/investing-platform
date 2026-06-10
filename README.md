@@ -143,6 +143,16 @@ This layer is intended to support future research and screening systems.
 
 ---
 
+# Research Prototype
+
+The dashboard includes an initial `Research` tab for idea tracking. It combines
+current portfolio weights with a small demo watchlist and fields for thesis,
+risk, target weight, and next action. This is intentionally a prototype: ideas
+are code-defined demo rows for now, not a persistent database table and not
+investment recommendations.
+
+---
+
 # Data Quality Checks
 
 The platform includes internal validation utilities for:
