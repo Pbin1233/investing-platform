@@ -27,6 +27,7 @@ def fetch_close_on_or_before(symbol: str, target_date: date) -> float:
         raise RuntimeError(f"No price for {symbol} near {target_date}")
 
     hist = hist[hist.index.date <= target_date]
+    hist = hist.dropna(subset=["Close"])
 
     if hist.empty:
         raise RuntimeError(f"No price for {symbol} on or before {target_date}")
