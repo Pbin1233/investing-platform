@@ -2,20 +2,28 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import text
 
-from app.portfolio.realized_gains import calculate_all_realized_gains
-from app.portfolio.portfolio_value import calculate_portfolio
+from app.database.connection import get_engine
+from app.market_data.price_analytics import calculate_price_analytics
+from app.ops.data_quality import run_all_checks
+from app.portfolio.allocation import (
+    allocation_by_broker,
+    allocation_by_ticker,
+    concentration_metrics,
+)
+from app.portfolio.benchmark import benchmark_xirr
 from app.portfolio.broker_cash import calculate_broker_cash
+from app.portfolio.performance_history import calculate_performance_history
+from app.portfolio.portfolio_value import calculate_portfolio
+from app.portfolio.realized_gains import calculate_all_realized_gains
+from app.portfolio.xirr import (
+    calculate_broker_xirr,
+    calculate_portfolio_xirr,
+    calculate_position_xirr,
+)
 from app.portfolio.yearly_summary import (
     calculate_yearly_summary,
     calculate_yearly_summary_by_broker,
 )
-from app.portfolio.allocation import allocation_by_ticker, allocation_by_broker, concentration_metrics
-from app.portfolio.performance_history import calculate_performance_history
-from app.market_data.price_analytics import calculate_price_analytics
-from app.ops.data_quality import run_all_checks
-from app.portfolio.xirr import calculate_portfolio_xirr, calculate_broker_xirr, calculate_position_xirr
-from app.portfolio.benchmark import benchmark_xirr
-from app.database.connection import get_engine
 
 
 st.set_page_config(page_title="Investing Platform", layout="wide")
@@ -23,115 +31,258 @@ st.title("Investing Platform")
 
 engine = get_engine()
 
+
 def read_sql(query: str) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(query), conn)
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "Dashboard",
-    "Portfolio",
-    "Transactions",
-    "Dividends",
-    "Realized Gains",
-    "Yearly Summary",
-    "Market Analytics",
-])
 
-with tab1:
-    st.header("Account Summary")
+def money(value) -> str:
+    if pd.isna(value):
+        return "n/a"
+    return f"{float(value):,.2f}"
 
-    portfolio = calculate_portfolio()
-    cash = calculate_broker_cash()
 
-    if portfolio.empty and cash.empty:
-        st.info("No data yet.")
+def percent(value) -> str:
+    if pd.isna(value):
+        return "n/a"
+    return f"{float(value):,.2f}%"
+
+
+def xirr_percent(value) -> str:
+    if value is None or pd.isna(value):
+        return "n/a"
+    return f"{float(value) * 100:,.2f}%"
+
+
+def add_pct_column(df: pd.DataFrame, source_col: str, target_col: str) -> pd.DataFrame:
+    df = df.copy()
+    df[target_col] = df[source_col].apply(
+        lambda value: None if pd.isna(value) else float(value) * 100
+    )
+    return df
+
+
+def filter_frame(
+    df: pd.DataFrame,
+    broker_key: str,
+    ticker_key: str | None = None,
+    action_key: str | None = None,
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    filtered = df.copy()
+
+    if "broker_name" in filtered.columns:
+        brokers = ["All"] + sorted(filtered["broker_name"].dropna().unique())
+        broker = st.selectbox("Broker", brokers, key=broker_key)
+        if broker != "All":
+            filtered = filtered[filtered["broker_name"] == broker]
+
+    if ticker_key and "ticker" in filtered.columns:
+        tickers = ["All"] + sorted(filtered["ticker"].dropna().unique())
+        ticker = st.selectbox("Ticker", tickers, key=ticker_key)
+        if ticker != "All":
+            filtered = filtered[filtered["ticker"] == ticker]
+
+    if action_key and "action" in filtered.columns:
+        actions = ["All"] + sorted(filtered["action"].dropna().unique())
+        action = st.selectbox("Action", actions, key=action_key)
+        if action != "All":
+            filtered = filtered[filtered["action"] == action]
+
+    return filtered
+
+
+portfolio = calculate_portfolio()
+cash = calculate_broker_cash()
+yearly_summary = calculate_yearly_summary()
+
+overview_tab, holdings_tab, performance_tab, income_tab, activity_tab, market_tab, ops_tab = st.tabs(
+    [
+        "Overview",
+        "Holdings",
+        "Performance",
+        "Income & Taxes",
+        "Activity",
+        "Market Data",
+        "Operations",
+    ]
+)
+
+
+with overview_tab:
+    st.header("Overview")
+
+    portfolio_by_broker = (
+        portfolio.groupby("broker_name", as_index=False)["market_value_eur"].sum()
+        if not portfolio.empty
+        else pd.DataFrame(columns=["broker_name", "market_value_eur"])
+    )
+
+    account_summary = cash.merge(
+        portfolio_by_broker,
+        on="broker_name",
+        how="outer",
+    ).fillna(0)
+
+    if account_summary.empty:
+        st.info("No account data yet.")
     else:
-        portfolio_by_broker = (
-            portfolio
-            .groupby("broker_name", as_index=False)["market_value_eur"]
-            .sum()
-            if not portfolio.empty
-            else pd.DataFrame(columns=["broker_name", "market_value_eur"])
+        account_summary["total_account_value_eur"] = (
+            account_summary["cash_balance_eur"]
+            + account_summary["market_value_eur"]
         )
 
-        summary = cash.merge(
-            portfolio_by_broker,
-            on="broker_name",
-            how="outer",
-        ).fillna(0)
+        total_cash = account_summary["cash_balance_eur"].sum()
+        total_securities = account_summary["market_value_eur"].sum()
+        total_account = account_summary["total_account_value_eur"].sum()
 
-        summary["total_account_value_eur"] = (
-            summary["cash_balance_eur"]
-            + summary["market_value_eur"]
+        latest_tax_due = None
+        if not yearly_summary.empty:
+            latest_tax_due = yearly_summary.sort_values("year").iloc[-1][
+                "estimated_tax_due_after_withholding_eur"
+            ]
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Cash EUR", money(total_cash))
+        col2.metric("Securities EUR", money(total_securities))
+        col3.metric("Total Account Value EUR", money(total_account))
+        col4.metric("Latest Tax Due EUR", money(latest_tax_due))
+
+        st.subheader("Accounts")
+        st.dataframe(
+            account_summary[
+                [
+                    "broker_name",
+                    "cash_balance_eur",
+                    "market_value_eur",
+                    "total_account_value_eur",
+                ]
+            ].sort_values("total_account_value_eur", ascending=False),
+            width="stretch",
+            hide_index=True,
         )
 
-        total_cash = summary["cash_balance_eur"].sum()
-        total_securities = summary["market_value_eur"].sum()
-        total_account = summary["total_account_value_eur"].sum()
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Cash EUR", f"{total_cash:,.2f}")
-        col2.metric("Securities EUR", f"{total_securities:,.2f}")
-        col3.metric("Total Account Value EUR", f"{total_account:,.2f}")
-
-        st.dataframe(summary, width="stretch")
-
-    st.subheader("Performance")
+    st.subheader("Performance Snapshot")
 
     try:
         xirr_result = calculate_portfolio_xirr()
         benchmark_result = benchmark_xirr("SPY")
 
-        perf_col1, perf_col2, perf_col3 = st.columns(3)
-
         portfolio_xirr = xirr_result["xirr"]
         benchmark_return = benchmark_result["benchmark_xirr"]
         spread = benchmark_result["spread"]
 
-        perf_col1.metric(
-            "Portfolio XIRR",
-            "n/a" if portfolio_xirr is None else f"{portfolio_xirr * 100:,.2f}%"
-        )
-        perf_col2.metric(
-            "SPY XIRR",
-            "n/a" if benchmark_return is None else f"{benchmark_return * 100:,.2f}%"
-        )
-        perf_col3.metric(
-            "Spread vs SPY",
-            "n/a" if spread is None else f"{spread * 100:,.2f}%"
-        )
+        perf_col1, perf_col2, perf_col3 = st.columns(3)
+        perf_col1.metric("Portfolio XIRR", xirr_percent(portfolio_xirr))
+        perf_col2.metric("SPY XIRR", xirr_percent(benchmark_return))
+        perf_col3.metric("Spread vs SPY", xirr_percent(spread))
 
         st.caption(
             "Benchmark comparison is FX-aware and uses the same external cash-flow dates."
         )
 
-        broker_xirr = calculate_broker_xirr()
-
-        if not broker_xirr.empty:
-            broker_display = broker_xirr.copy()
-            broker_display["xirr_pct"] = broker_display["xirr"].apply(
-                lambda x: None if pd.isna(x) else x * 100
-            )
-
-            st.subheader("Broker Performance")
-            st.dataframe(
-                broker_display[
-                    [
-                        "broker_name",
-                        "as_of_date",
-                        "xirr_pct",
-                        "cash_flow_count",
-                        "terminal_value_eur",
-                    ]
-                ],
-                width="stretch",
-            )
-
     except Exception as exc:
         st.warning(f"Performance metrics unavailable: {exc}")
 
-    st.subheader("Portfolio History")
+    if not portfolio.empty:
+        st.subheader("Largest Positions")
+        largest_positions = portfolio.copy()
+        total_value = largest_positions["market_value_eur"].sum()
+        largest_positions["allocation_pct"] = (
+            largest_positions["market_value_eur"] / total_value * 100
+            if total_value
+            else 0
+        )
+        st.dataframe(
+            largest_positions[
+                [
+                    "broker_name",
+                    "ticker",
+                    "quantity",
+                    "market_value_eur",
+                    "allocation_pct",
+                    "unrealized_pl_eur",
+                    "unrealized_pl_pct",
+                    "price_date",
+                ]
+            ].head(8),
+            width="stretch",
+            hide_index=True,
+        )
 
+
+with holdings_tab:
+    st.header("Holdings")
+
+    if portfolio.empty:
+        st.info("No portfolio data yet.")
+    else:
+        holdings = portfolio.copy()
+        total_value = pd.to_numeric(holdings["market_value_eur"]).sum()
+        total_invested = pd.to_numeric(holdings["invested_eur"]).sum()
+        unrealized = pd.to_numeric(holdings["unrealized_pl_eur"]).sum()
+        unrealized_pct = unrealized / total_invested * 100 if total_invested else 0
+
+        holdings["allocation_pct"] = (
+            holdings["market_value_eur"] / total_value * 100
+            if total_value
+            else 0
+        )
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Market Value EUR", money(total_value))
+        col2.metric("Invested EUR", money(total_invested))
+        col3.metric("Unrealized P/L EUR", money(unrealized))
+        col4.metric("Unrealized P/L %", percent(unrealized_pct))
+
+        st.subheader("Current Positions")
+        st.dataframe(
+            holdings[
+                [
+                    "broker_name",
+                    "ticker",
+                    "quantity",
+                    "market_value_eur",
+                    "allocation_pct",
+                    "invested_eur",
+                    "unrealized_pl_eur",
+                    "unrealized_pl_pct",
+                    "close_price",
+                    "currency",
+                    "fx_rate_to_eur",
+                    "price_date",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+        st.subheader("Allocation")
+
+        concentration = concentration_metrics()
+        if concentration:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Top Position", percent(concentration["top_1_pct"]))
+            c2.metric("Top 3 Positions", percent(concentration["top_3_pct"]))
+            c3.metric("Positions", f"{concentration['position_count']}")
+
+        ticker_alloc = allocation_by_ticker()
+        if not ticker_alloc.empty:
+            st.dataframe(ticker_alloc, width="stretch", hide_index=True)
+
+        broker_alloc = allocation_by_broker()
+        if not broker_alloc.empty:
+            st.subheader("Broker Allocation")
+            st.dataframe(broker_alloc, width="stretch", hide_index=True)
+
+
+with performance_tab:
+    st.header("Performance")
+
+    st.subheader("Portfolio History")
     history = read_sql("""
         SELECT
             snapshot_date,
@@ -143,110 +294,165 @@ with tab1:
         ORDER BY snapshot_date
     """)
 
-    if not history.empty:
+    if history.empty:
+        st.info("No portfolio snapshots yet.")
+    else:
         history["snapshot_date"] = pd.to_datetime(history["snapshot_date"])
-
         st.line_chart(
             history.set_index("snapshot_date")[
                 ["total_value_eur", "total_invested_eur"]
             ]
         )
 
-    st.subheader("Performance History")
-
+    st.subheader("Drawdown")
     performance_history = calculate_performance_history()
 
     if performance_history.empty:
         st.info("No performance history yet.")
     else:
-        st.caption(
-            "Daily return and drawdown are meaningful only when snapshots are consistent over time."
-        )
-
         st.line_chart(
             performance_history.set_index("snapshot_date")[
                 ["total_value_eur", "running_peak_eur"]
             ]
         )
-
         st.line_chart(
             performance_history.set_index("snapshot_date")[
                 ["drawdown_pct"]
             ]
         )
 
-        st.dataframe(performance_history, width="stretch")
+        with st.expander("Performance history table"):
+            st.dataframe(performance_history, width="stretch", hide_index=True)
 
-with tab2:
-    st.header("Portfolio Valuation")
+    st.subheader("Broker XIRR")
+    broker_xirr = calculate_broker_xirr()
 
-    portfolio = calculate_portfolio()
-
-    if portfolio.empty:
-        st.info("No portfolio data yet.")
+    if broker_xirr.empty:
+        st.info("No broker XIRR data yet.")
     else:
-        total_value = pd.to_numeric(portfolio["market_value_eur"]).sum()
-        total_invested = pd.to_numeric(portfolio["invested_eur"]).sum()
-        unrealized = pd.to_numeric(portfolio["unrealized_pl_eur"]).sum()
-        unrealized_pct = unrealized / total_invested * 100 if total_invested else 0
+        broker_display = add_pct_column(broker_xirr, "xirr", "xirr_pct")
+        st.dataframe(
+            broker_display[
+                [
+                    "broker_name",
+                    "as_of_date",
+                    "xirr_pct",
+                    "cash_flow_count",
+                    "terminal_value_eur",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+    st.subheader("Position XIRR")
+    position_xirr = calculate_position_xirr()
+
+    if position_xirr.empty:
+        st.info("No position XIRR data yet.")
+    else:
+        position_display = add_pct_column(position_xirr, "xirr", "xirr_pct")
+        st.dataframe(
+            position_display[
+                [
+                    "ticker",
+                    "as_of_date",
+                    "xirr_pct",
+                    "cash_flow_count",
+                    "terminal_value_eur",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+
+with income_tab:
+    st.header("Income & Taxes")
+
+    if yearly_summary.empty:
+        st.info("No yearly summary data available.")
+    else:
+        latest = yearly_summary.sort_values("year").iloc[-1]
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Market Value EUR", f"{total_value:,.2f}")
-        col2.metric("Invested EUR", f"{total_invested:,.2f}")
-        col3.metric("Unrealized P/L EUR", f"{unrealized:,.2f}")
-        col4.metric("Unrealized P/L %", f"{unrealized_pct:,.2f}%")
+        col1.metric("Latest Net Dividends EUR", money(latest["net_dividends_eur"]))
+        col2.metric("Latest Withholding EUR", money(latest["withholding_tax_eur"]))
+        col3.metric("Latest Realized Gain EUR", money(latest["realized_gain_eur"]))
+        col4.metric(
+            "Latest Tax Due EUR",
+            money(latest["estimated_tax_due_after_withholding_eur"]),
+        )
 
-        st.dataframe(portfolio, width="stretch")
+        st.subheader("Yearly Tax Summary")
+        tax_columns = [
+            "year",
+            "gross_dividends_eur",
+            "withholding_tax_eur",
+            "net_dividends_eur",
+            "realized_gain_eur",
+            "capital_gains_tax_eur",
+            "dividend_tax_due_after_withholding_eur",
+            "ivafe_tax_eur",
+            "estimated_tax_due_after_withholding_eur",
+            "year_end_market_value_eur",
+            "year_end_unpriced_positions",
+        ]
+        st.dataframe(yearly_summary[tax_columns], width="stretch", hide_index=True)
 
-        st.subheader("Allocation")
+        broker_summary = calculate_yearly_summary_by_broker()
+        if not broker_summary.empty:
+            st.subheader("Broker Tax Breakdown")
+            st.dataframe(broker_summary, width="stretch", hide_index=True)
 
-        concentration = concentration_metrics()
+    st.subheader("Dividends")
+    dividends = read_sql("""
+        SELECT
+            payment_date,
+            broker_name,
+            ticker,
+            gross_amount,
+            withholding_tax,
+            net_amount,
+            currency,
+            fx_rate_to_eur,
+            gross_amount * fx_rate_to_eur AS gross_amount_eur,
+            withholding_tax * fx_rate_to_eur AS withholding_tax_eur,
+            net_amount * fx_rate_to_eur AS net_amount_eur
+        FROM dividends
+        ORDER BY payment_date DESC, dividend_id DESC
+        LIMIT 1000
+    """)
 
-        if concentration:
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Top Position", f"{concentration['top_1_pct']:,.2f}%")
-            c2.metric("Top 3 Positions", f"{concentration['top_3_pct']:,.2f}%")
-            c3.metric("Positions", f"{concentration['position_count']}")
+    if dividends.empty:
+        st.info("No dividends yet.")
+    else:
+        dividend_filtered = filter_frame(
+            dividends,
+            broker_key="dividend_broker",
+            ticker_key="dividend_ticker",
+        )
+        total_net = pd.to_numeric(dividend_filtered["net_amount_eur"]).sum()
+        st.metric("Filtered Net Dividends EUR", money(total_net))
+        st.dataframe(dividend_filtered, width="stretch", hide_index=True)
 
-        ticker_alloc = allocation_by_ticker()
+    st.subheader("Realized Gains - LIFO")
+    gains = calculate_all_realized_gains()
 
-        if not ticker_alloc.empty:
-            st.dataframe(ticker_alloc, width="stretch")
+    if gains.empty:
+        st.info("No realized gains found.")
+    else:
+        st.metric(
+            "Total Realized Gain EUR",
+            money(pd.to_numeric(gains["realized_gain_eur"]).sum()),
+        )
+        st.dataframe(gains, width="stretch", hide_index=True)
 
-        broker_alloc = allocation_by_broker()
 
-        if not broker_alloc.empty:
-            st.subheader("Broker Allocation")
-            st.dataframe(broker_alloc, width="stretch")
+with activity_tab:
+    st.header("Activity")
 
-        st.subheader("Position XIRR")
-
-        position_xirr = calculate_position_xirr()
-
-        if position_xirr.empty:
-            st.info("No position XIRR data yet.")
-        else:
-            position_display = position_xirr.copy()
-            position_display["xirr_pct"] = position_display["xirr"].apply(
-                lambda x: None if pd.isna(x) else x * 100
-            )
-
-            st.dataframe(
-                position_display[
-                    [
-                        "ticker",
-                        "as_of_date",
-                        "xirr_pct",
-                        "cash_flow_count",
-                        "terminal_value_eur",
-                    ]
-                ],
-                width="stretch",
-            )
-
-with tab3:
-    st.header("Transactions")
-
+    st.subheader("Transactions")
     transactions = read_sql("""
         SELECT
             trade_date,
@@ -264,116 +470,92 @@ with tab3:
         LIMIT 1000
     """)
 
-    st.dataframe(transactions, width="stretch")
+    if transactions.empty:
+        st.info("No transactions yet.")
+    else:
+        transaction_filtered = filter_frame(
+            transactions,
+            broker_key="transaction_broker",
+            ticker_key="transaction_ticker",
+            action_key="transaction_action",
+        )
+        st.dataframe(transaction_filtered, width="stretch", hide_index=True)
 
-with tab4:
-    st.header("Dividends")
-
-    dividends = read_sql("""
+    st.subheader("Cash Flows")
+    cash_flows = read_sql("""
         SELECT
-            payment_date,
+            flow_date,
             broker_name,
-            ticker,
-            gross_amount,
-            withholding_tax,
-            net_amount,
+            flow_type,
+            amount,
             currency,
             fx_rate_to_eur,
-            net_amount * fx_rate_to_eur AS net_amount_eur
-        FROM dividends
-        ORDER BY payment_date DESC, dividend_id DESC
+            amount * fx_rate_to_eur AS amount_eur,
+            notes
+        FROM cash_flows
+        ORDER BY flow_date DESC, cash_flow_id DESC
         LIMIT 1000
     """)
 
-    if dividends.empty:
-        st.info("No dividends yet.")
+    if cash_flows.empty:
+        st.info("No cash flows yet.")
     else:
-        total_net = pd.to_numeric(dividends["net_amount_eur"]).sum()
-        st.metric("Total Net Dividends EUR", f"{total_net:,.2f}")
-        st.dataframe(dividends, width="stretch")
+        cash_flow_filtered = filter_frame(
+            cash_flows,
+            broker_key="cash_flow_broker",
+        )
+        flow_types = ["All"] + sorted(cash_flow_filtered["flow_type"].dropna().unique())
+        flow_type = st.selectbox("Flow type", flow_types, key="cash_flow_type")
+        if flow_type != "All":
+            cash_flow_filtered = cash_flow_filtered[
+                cash_flow_filtered["flow_type"] == flow_type
+            ]
+        st.dataframe(cash_flow_filtered, width="stretch", hide_index=True)
 
-with tab5:
-    st.header("Realized Gains - LIFO")
+    st.subheader("Recent Imports")
+    import_records = read_sql("""
+        SELECT
+            imported_at,
+            source_system,
+            source_file,
+            target_table,
+            target_id
+        FROM import_records
+        ORDER BY imported_at DESC, import_record_id DESC
+        LIMIT 200
+    """)
 
-    gains = calculate_all_realized_gains()
-
-    if gains.empty:
-        st.info("No realized gains found.")
+    if import_records.empty:
+        st.info("No import records yet.")
     else:
-        st.dataframe(gains, width="stretch")
-
-        total_gain = pd.to_numeric(gains["realized_gain_eur"]).sum()
-
-        st.metric("Total Realized Gain EUR", f"{total_gain:,.2f}")
+        st.dataframe(import_records, width="stretch", hide_index=True)
 
 
-with tab6:
-    st.header("Yearly Summary")
+with market_tab:
+    st.header("Market Data")
 
-    summary = calculate_yearly_summary()
+    st.subheader("Latest Prices")
+    latest_prices = read_sql("""
+        SELECT DISTINCT ON (s.ticker)
+            s.ticker,
+            s.price_symbol,
+            s.exchange,
+            s.quote_currency,
+            p.price_date,
+            p.close_price,
+            p.currency,
+            p.fx_rate_to_eur,
+            p.close_price * p.fx_rate_to_eur AS close_price_eur
+        FROM securities s
+        LEFT JOIN prices p
+          ON p.ticker = s.ticker
+        WHERE s.active = TRUE
+        ORDER BY s.ticker, p.price_date DESC NULLS LAST, p.price_id DESC NULLS LAST
+    """)
 
-    if summary.empty:
-        st.info("No yearly summary data available.")
-    else:
-        st.subheader("Consolidated yearly summary")
-        st.dataframe(summary, width="stretch")
+    st.dataframe(latest_prices, width="stretch", hide_index=True)
 
-        latest = summary.sort_values("year").iloc[-1]
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        col1.metric(
-            "Latest Year Net Deposits EUR",
-            f"{latest['net_external_cash_flow_eur']:,.2f}",
-        )
-
-        col2.metric(
-            "Latest Year Dividends EUR",
-            f"{latest['net_dividends_eur']:,.2f}",
-        )
-
-        col3.metric(
-            "Latest Year Withholding EUR",
-            f"{latest['withholding_tax_eur']:,.2f}",
-        )
-
-        col4.metric(
-            "Latest Year Realized Gain EUR",
-            f"{latest['realized_gain_eur']:,.2f}",
-        )
-
-        col5, col6, col7, col8 = st.columns(4)
-
-        col5.metric(
-            "Latest Year-End Value EUR",
-            f"{latest['year_end_market_value_eur']:,.2f}",
-        )
-
-        col6.metric(
-            "Latest Year Capital Gains Tax EUR",
-            f"{latest['capital_gains_tax_eur']:,.2f}",
-        )
-
-        col7.metric(
-            "Latest Year IVAFE EUR",
-            f"{latest['ivafe_tax_eur']:,.2f}",
-        )
-
-        col8.metric(
-            "Latest Year Tax Due After Withholding EUR",
-            f"{latest['estimated_tax_due_after_withholding_eur']:,.2f}",
-        )
-
-    broker_summary = calculate_yearly_summary_by_broker()
-
-    if not broker_summary.empty:
-        st.subheader("Broker breakdown")
-
-        st.dataframe(broker_summary, width="stretch", hide_index=True)
-
-with tab7:
-    st.header("Market Analytics")
-
+    st.subheader("Historical Price Analytics")
     price_analytics = calculate_price_analytics()
 
     if price_analytics.empty:
@@ -382,5 +564,48 @@ with tab7:
         st.caption(
             "Returns, volatility, and drawdown are based on stored daily EUR-adjusted prices."
         )
+        st.dataframe(price_analytics, width="stretch", hide_index=True)
 
-        st.dataframe(price_analytics, width="stretch")
+
+with ops_tab:
+    st.header("Operations")
+
+    st.subheader("Data Quality")
+    checks = run_all_checks()
+    quality_rows = []
+
+    for name, df in checks.items():
+        quality_rows.append(
+            {
+                "check": name,
+                "status": "OK" if df.empty else "ISSUES",
+                "rows": len(df),
+            }
+        )
+
+    st.dataframe(pd.DataFrame(quality_rows), width="stretch", hide_index=True)
+
+    for name, df in checks.items():
+        if not df.empty:
+            with st.expander(f"{name} details"):
+                st.dataframe(df, width="stretch", hide_index=True)
+
+    st.subheader("Job Runs")
+    job_runs = read_sql("""
+        SELECT
+            id,
+            job_name,
+            status,
+            rows_processed,
+            started_at,
+            completed_at,
+            message
+        FROM job_runs
+        ORDER BY started_at DESC
+        LIMIT 100
+    """)
+
+    if job_runs.empty:
+        st.info("No job runs yet.")
+    else:
+        st.dataframe(job_runs, width="stretch", hide_index=True)
