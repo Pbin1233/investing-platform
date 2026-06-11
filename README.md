@@ -272,6 +272,17 @@ To replace every broker's imported rows after reviewing the dry run:
 python -m app.imports.refresh_all_brokers --apply --yes
 ```
 
+On the NAS, the repo wrapper runs that command inside the app container from the
+Compose directory:
+
+```bash
+/volume1/docker/projects/investing-platform/scripts/refresh_brokers.sh
+/volume1/docker/projects/investing-platform/scripts/refresh_brokers.sh --apply
+```
+
+The wrapper keeps dry-run as the default. When `--apply` is passed it adds the
+required confirmation flag for the underlying refresh command.
+
 To refresh just one broker or use a specific file, call the single-broker
 command directly:
 
