@@ -17,6 +17,7 @@ from app.imports.import_ib_statement import (
     parse_ib_statement,
 )
 from app.ops.data_quality import run_all_checks
+from app.ops.job_runs import finish_job, start_job
 
 
 class RefreshError(RuntimeError):
@@ -148,6 +149,41 @@ def assert_data_quality_ok(summary: dict) -> None:
         raise RefreshError(f"Data quality issues found after refresh: {failures}")
 
 
+def refresh_job_name(broker: str) -> str:
+    return f"broker_refresh_{broker.upper()}"
+
+
+def _refresh_rows_processed(report: dict) -> int | None:
+    if "apply_summary" in report:
+        return int(report["apply_summary"].get("inserted", 0))
+
+    if "pre_refresh_dry_run" in report:
+        return int(report["pre_refresh_dry_run"].get("inserted", 0))
+
+    return None
+
+
+def _finish_refresh_job(
+    job_id: int,
+    status: str,
+    report: dict,
+    error: Exception | None = None,
+) -> None:
+    message = {
+        "kind": "broker_refresh",
+        "report": report,
+    }
+    if error is not None:
+        message["error"] = str(error)
+
+    finish_job(
+        job_id,
+        status,
+        rows_processed=_refresh_rows_processed(report),
+        message=json.dumps(message, default=str),
+    )
+
+
 def refresh_broker(
     broker: str,
     path: str | Path,
@@ -156,61 +192,72 @@ def refresh_broker(
     skip_backup: bool = False,
 ) -> dict:
     config = broker_config(broker)
-    parsed = parse_broker_file(broker, path)
-
     report = {
         "broker": broker.upper(),
         "broker_name": config["broker_name"],
         "source_system": config["source_system"],
-        "source_file": parsed.source_file,
+        "requested_file": str(path),
         "mode": "apply" if apply else "dry-run",
-        "pre_refresh_dry_run": import_statement(
+    }
+
+    job_id = start_job(refresh_job_name(report["broker"]))
+
+    try:
+        parsed = parse_broker_file(broker, path)
+        report["source_file"] = parsed.source_file
+        report["pre_refresh_dry_run"] = import_statement(
             parsed,
             apply=False,
             source_system=config["source_system"],
-        ),
-    }
-
-    if not apply:
-        report["message"] = "Dry-run only. Re-run with --apply --yes to replace broker rows."
-        return report
-
-    if not yes:
-        raise RefreshError("--apply requires --yes because this replaces broker rows")
-
-    if not skip_backup:
-        report["backup"] = run_backup()
-    else:
-        report["backup"] = "skipped"
-
-    report["deleted"] = delete_broker_rows(
-        broker_name=config["broker_name"],
-        source_system=config["source_system"],
-    )
-
-    report["apply_summary"] = import_statement(
-        parsed,
-        apply=True,
-        source_system=config["source_system"],
-    )
-
-    report["post_refresh_dry_run"] = import_statement(
-        parsed,
-        apply=False,
-        source_system=config["source_system"],
-    )
-
-    post = report["post_refresh_dry_run"]
-    if post["inserted"] != 0 or post["matched_existing"] != 0:
-        raise RefreshError(
-            "Refresh idempotency check failed: "
-            f"inserted={post['inserted']} matched_existing={post['matched_existing']}"
         )
 
-    report["data_quality"] = data_quality_summary()
-    assert_data_quality_ok(report["data_quality"])
+        if not apply:
+            report["message"] = (
+                "Dry-run only. Re-run with --apply --yes to replace broker rows."
+            )
+            _finish_refresh_job(job_id, "success", report)
+            return report
 
-    return report
+        if not yes:
+            raise RefreshError("--apply requires --yes because this replaces broker rows")
+
+        if not skip_backup:
+            report["backup"] = run_backup()
+        else:
+            report["backup"] = "skipped"
+
+        report["deleted"] = delete_broker_rows(
+            broker_name=config["broker_name"],
+            source_system=config["source_system"],
+        )
+
+        report["apply_summary"] = import_statement(
+            parsed,
+            apply=True,
+            source_system=config["source_system"],
+        )
+
+        report["post_refresh_dry_run"] = import_statement(
+            parsed,
+            apply=False,
+            source_system=config["source_system"],
+        )
+
+        post = report["post_refresh_dry_run"]
+        if post["inserted"] != 0 or post["matched_existing"] != 0:
+            raise RefreshError(
+                "Refresh idempotency check failed: "
+                f"inserted={post['inserted']} matched_existing={post['matched_existing']}"
+            )
+
+        report["data_quality"] = data_quality_summary()
+        assert_data_quality_ok(report["data_quality"])
+        _finish_refresh_job(job_id, "success", report)
+        return report
+
+    except Exception as exc:
+        _finish_refresh_job(job_id, "failed", report, error=exc)
+        raise
 
 
 def main():
