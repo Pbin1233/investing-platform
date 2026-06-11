@@ -712,6 +712,121 @@ with market_tab:
 with ops_tab:
     st.header("Operations")
 
+    st.subheader("Run Summary")
+    latest_jobs = read_sql("""
+        SELECT DISTINCT ON (job_name)
+            job_name,
+            status,
+            started_at,
+            completed_at,
+            rows_processed,
+            ROUND(EXTRACT(EPOCH FROM (NOW() - started_at)) / 3600.0, 1)
+                AS age_hours,
+            message
+        FROM job_runs
+        ORDER BY job_name, started_at DESC
+    """)
+
+    if latest_jobs.empty:
+        st.info("No maintenance runs logged yet.")
+    else:
+        latest_maintenance = latest_jobs[
+            latest_jobs["job_name"] == "daily_maintenance"
+        ]
+        run_cols = st.columns(4)
+
+        if latest_maintenance.empty:
+            run_cols[0].metric("Daily maintenance", "n/a")
+            run_cols[1].metric("Last run age", "n/a")
+        else:
+            latest_run = latest_maintenance.iloc[0]
+            run_cols[0].metric("Daily maintenance", latest_run["status"])
+            run_cols[1].metric("Last run age", f"{latest_run['age_hours']} h")
+
+        failures = len(latest_jobs[latest_jobs["status"] == "failed"])
+        running = len(latest_jobs[latest_jobs["status"] == "started"])
+        run_cols[2].metric("Latest failed jobs", failures)
+        run_cols[3].metric("Latest running jobs", running)
+
+        st.dataframe(
+            latest_jobs[
+                [
+                    "job_name",
+                    "status",
+                    "started_at",
+                    "completed_at",
+                    "age_hours",
+                    "rows_processed",
+                    "message",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+    st.subheader("Broker Import Summary")
+    broker_imports = read_sql("""
+        WITH file_imports AS (
+            SELECT
+                source_system,
+                source_file,
+                COUNT(*) AS imported_rows,
+                COUNT(*) FILTER (WHERE target_table = 'transactions')
+                    AS transaction_rows,
+                COUNT(*) FILTER (WHERE target_table = 'dividends')
+                    AS dividend_rows,
+                COUNT(*) FILTER (WHERE target_table = 'cash_flows')
+                    AS cash_flow_rows,
+                MIN(imported_at) AS first_imported_at,
+                MAX(imported_at) AS latest_imported_at
+            FROM import_records
+            WHERE source_system IN ('IBKR', 'DEGIRO')
+            GROUP BY source_system, source_file
+        ),
+        ranked AS (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY source_system
+                    ORDER BY latest_imported_at DESC, source_file
+                ) AS rn
+            FROM file_imports
+        )
+        SELECT
+            CASE
+                WHEN source_system = 'IBKR' THEN 'IB'
+                ELSE source_system
+            END AS broker,
+            source_system,
+            source_file,
+            imported_rows,
+            transaction_rows,
+            dividend_rows,
+            cash_flow_rows,
+            first_imported_at,
+            latest_imported_at,
+            ROUND(EXTRACT(EPOCH FROM (NOW() - latest_imported_at)) / 86400.0, 1)
+                AS age_days
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY broker
+    """)
+
+    if broker_imports.empty:
+        st.info("No broker import records found yet.")
+    else:
+        import_cols = st.columns(3)
+        import_cols[0].metric("Broker feeds", len(broker_imports))
+        import_cols[1].metric(
+            "Latest import rows",
+            int(broker_imports["imported_rows"].sum()),
+        )
+        import_cols[2].metric(
+            "Oldest latest import",
+            f"{broker_imports['age_days'].max()} d",
+        )
+        st.dataframe(broker_imports, width="stretch", hide_index=True)
+
     st.subheader("Data Quality")
     checks = run_all_checks()
     quality_rows = []
