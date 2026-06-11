@@ -250,6 +250,29 @@ python -m app.imports.import_degiro_account "path/to/degiro_account.csv" --apply
 Applied imports are tracked in `import_records` using stable source hashes, so
 overlapping future IBKR exports can be imported without duplicating rows.
 
+For the normal full-history CSV replacement workflow, use the broker refresh
+command instead of manually deleting rows:
+
+```bash
+python -m app.imports.refresh_broker \
+  --broker IB \
+  --file "/data/activity imports/ib/U19672266.TRANSACTIONS.20240528.20260608.csv"
+```
+
+That command defaults to a dry run. To replace the broker's imported rows, create
+a backup, apply the full-history file, verify idempotency, and run data quality
+checks:
+
+```bash
+python -m app.imports.refresh_broker \
+  --broker IB \
+  --file "/data/activity imports/ib/U19672266.TRANSACTIONS.20240528.20260608.csv" \
+  --apply \
+  --yes
+```
+
+Supported broker values are `IB` and `DEGIRO`.
+
 ---
 
 # Future Direction
