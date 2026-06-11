@@ -10,6 +10,51 @@ DIVIDEND_TAX_RATE = 0.26
 IVAFE_TAX_RATE = 0.002
 
 
+def _empty_realized_summary(by_broker: bool = False) -> pd.DataFrame:
+    columns = [
+        "year",
+        "realized_proceeds_eur",
+        "realized_cost_basis_eur",
+        "realized_gain_eur",
+    ]
+    if by_broker:
+        columns.insert(1, "broker_name")
+    return pd.DataFrame(columns=columns)
+
+
+def _summarize_realized_gains(
+    gains: pd.DataFrame,
+    by_broker: bool = False,
+) -> pd.DataFrame:
+    if gains.empty:
+        return _empty_realized_summary(by_broker=by_broker)
+
+    realized = gains.copy()
+    realized["year"] = pd.to_datetime(realized["sell_date"]).dt.year
+
+    group_cols = ["year"]
+    if by_broker:
+        group_cols.append("broker_name")
+
+    return (
+        realized
+        .groupby(group_cols, as_index=False)[
+            [
+                "proceeds_eur",
+                "cost_basis_eur",
+                "realized_gain_eur",
+            ]
+        ]
+        .sum()
+        .rename(
+            columns={
+                "proceeds_eur": "realized_proceeds_eur",
+                "cost_basis_eur": "realized_cost_basis_eur",
+            }
+        )
+    )
+
+
 def _year_end_market_values(
     engine,
     years: list[int],
@@ -176,16 +221,7 @@ def calculate_yearly_summary() -> pd.DataFrame:
 
     gains = calculate_all_realized_gains()
 
-    if gains.empty:
-        realized = pd.DataFrame(columns=["year", "realized_gain_eur"])
-    else:
-        realized = gains.copy()
-        realized["year"] = pd.to_datetime(realized["sell_date"]).dt.year
-        realized = (
-            realized
-            .groupby("year", as_index=False)["realized_gain_eur"]
-            .sum()
-        )
+    realized = _summarize_realized_gains(gains)
 
     frames = [cash_flows, dividends, realized]
     years = sorted(
@@ -210,6 +246,8 @@ def calculate_yearly_summary() -> pd.DataFrame:
         "gross_dividends_eur",
         "withholding_tax_eur",
         "net_dividends_eur",
+        "realized_proceeds_eur",
+        "realized_cost_basis_eur",
         "realized_gain_eur",
         "year_end_market_value_eur",
         "year_end_unpriced_positions",
@@ -259,18 +297,7 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
 
     gains = calculate_all_realized_gains()
 
-    if gains.empty:
-        realized = pd.DataFrame(
-            columns=["year", "broker_name", "realized_gain_eur"]
-        )
-    else:
-        realized = gains.copy()
-        realized["year"] = pd.to_datetime(realized["sell_date"]).dt.year
-        realized = (
-            realized
-            .groupby(["year", "broker_name"], as_index=False)["realized_gain_eur"]
-            .sum()
-        )
+    realized = _summarize_realized_gains(gains, by_broker=True)
 
     frames = [cash_flows, dividends, realized]
 
@@ -304,6 +331,8 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
         "gross_dividends_eur",
         "withholding_tax_eur",
         "net_dividends_eur",
+        "realized_proceeds_eur",
+        "realized_cost_basis_eur",
         "realized_gain_eur",
         "year_end_market_value_eur",
         "year_end_unpriced_positions",

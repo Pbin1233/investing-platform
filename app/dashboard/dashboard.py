@@ -23,6 +23,9 @@ from app.portfolio.xirr import (
     calculate_position_xirr,
 )
 from app.portfolio.yearly_summary import (
+    CAPITAL_GAINS_TAX_RATE,
+    DIVIDEND_TAX_RATE,
+    IVAFE_TAX_RATE,
     calculate_yearly_summary,
     calculate_yearly_summary_by_broker,
 )
@@ -373,6 +376,9 @@ with performance_tab:
 
 with income_tab:
     st.header("Income & Taxes")
+    st.caption(
+        "Estimated taxes are an audit aid, not tax advice. Amounts are EUR-converted from stored broker data."
+    )
 
     if yearly_summary.empty:
         st.info("No yearly summary data available.")
@@ -380,34 +386,101 @@ with income_tab:
         latest = yearly_summary.sort_values("year").iloc[-1]
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Latest Net Dividends EUR", money(latest["net_dividends_eur"]))
-        col2.metric("Latest Withholding EUR", money(latest["withholding_tax_eur"]))
-        col3.metric("Latest Realized Gain EUR", money(latest["realized_gain_eur"]))
+        col1.metric("Tax Year", int(latest["year"]))
+        col2.metric("Taxable Gains EUR", money(latest["taxable_realized_gain_eur"]))
+        col3.metric(
+            "Dividend Tax Due EUR",
+            money(latest["dividend_tax_due_after_withholding_eur"]),
+        )
         col4.metric(
-            "Latest Tax Due EUR",
+            "Estimated Due EUR",
             money(latest["estimated_tax_due_after_withholding_eur"]),
         )
 
-        st.subheader("Yearly Tax Summary")
+        st.subheader("Tax Calculation by Year")
         tax_columns = [
             "year",
+            "realized_proceeds_eur",
+            "realized_cost_basis_eur",
+            "realized_gain_eur",
+            "taxable_realized_gain_eur",
+            "capital_gains_tax_eur",
             "gross_dividends_eur",
             "withholding_tax_eur",
             "net_dividends_eur",
-            "realized_gain_eur",
-            "capital_gains_tax_eur",
+            "dividend_tax_eur",
+            "dividend_withholding_credit_eur",
             "dividend_tax_due_after_withholding_eur",
-            "ivafe_tax_eur",
-            "estimated_tax_due_after_withholding_eur",
             "year_end_market_value_eur",
             "year_end_unpriced_positions",
+            "ivafe_tax_eur",
+            "estimated_total_tax_liability_eur",
+            "estimated_tax_due_after_withholding_eur",
         ]
         st.dataframe(yearly_summary[tax_columns], width="stretch", hide_index=True)
 
         broker_summary = calculate_yearly_summary_by_broker()
         if not broker_summary.empty:
-            st.subheader("Broker Tax Breakdown")
-            st.dataframe(broker_summary, width="stretch", hide_index=True)
+            st.subheader("Tax Calculation by Broker")
+            broker_tax_columns = [
+                "year",
+                "broker_name",
+                "realized_proceeds_eur",
+                "realized_cost_basis_eur",
+                "realized_gain_eur",
+                "taxable_realized_gain_eur",
+                "capital_gains_tax_eur",
+                "gross_dividends_eur",
+                "withholding_tax_eur",
+                "dividend_tax_due_after_withholding_eur",
+                "year_end_market_value_eur",
+                "year_end_unpriced_positions",
+                "ivafe_tax_eur",
+                "estimated_tax_due_after_withholding_eur",
+            ]
+            st.dataframe(
+                broker_summary[broker_tax_columns],
+                width="stretch",
+                hide_index=True,
+            )
+
+        with st.expander("Tax assumptions"):
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "assumption": "Capital gains tax rate",
+                            "value": f"{CAPITAL_GAINS_TAX_RATE:.1%}",
+                        },
+                        {
+                            "assumption": "Dividend tax rate",
+                            "value": f"{DIVIDEND_TAX_RATE:.1%}",
+                        },
+                        {
+                            "assumption": "IVAFE rate",
+                            "value": f"{IVAFE_TAX_RATE:.2%}",
+                        },
+                        {
+                            "assumption": "Cost basis method",
+                            "value": "LIFO realized gains from imported broker trades",
+                        },
+                        {
+                            "assumption": "Dividend withholding credit",
+                            "value": "Capped at computed dividend tax for each year or broker row",
+                        },
+                        {
+                            "assumption": "Year-end market value",
+                            "value": "Position quantity at Dec 31 times latest stored price on or before Dec 31",
+                        },
+                        {
+                            "assumption": "Unpriced positions",
+                            "value": "Counted separately; missing year-end prices reduce IVAFE estimate",
+                        },
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
 
     st.subheader("Dividends")
     dividends = read_sql("""
