@@ -3,6 +3,8 @@ import streamlit as st
 from sqlalchemy import text
 
 from app.database.connection import get_engine
+from app.market_data.health import load_market_data_health, market_data_health_summary
+from app.market_data.market_hours import market_sync_blockers_for_active_securities
 from app.market_data.price_analytics import calculate_price_analytics
 from app.ops.data_quality import run_all_checks
 from app.portfolio.allocation import (
@@ -633,6 +635,46 @@ with activity_tab:
 
 with market_tab:
     st.header("Market Data")
+
+    st.subheader("Market Data Health")
+    market_health = load_market_data_health(engine)
+    health_summary = market_data_health_summary(market_health)
+
+    health_cols = st.columns(5)
+    health_cols[0].metric("Active securities", health_summary["active_securities"])
+    health_cols[1].metric("OK", health_summary["ok"])
+    health_cols[2].metric("Stale", health_summary["stale"])
+    health_cols[3].metric(
+        "Missing/invalid",
+        health_summary["missing"] + health_summary["invalid"],
+    )
+    health_cols[4].metric("Check", health_summary["check"])
+
+    blockers = market_sync_blockers_for_active_securities(engine)
+    if blockers:
+        st.warning("Market sync blocked now: " + "; ".join(blockers))
+    else:
+        st.caption("Configured active markets are closed or outside the sync buffer now.")
+
+    if market_health.empty:
+        st.info("No active securities found.")
+    else:
+        health_view = market_health[
+            [
+                "ticker",
+                "exchange",
+                "quote_currency",
+                "latest_price_date",
+                "latest_price_age_days",
+                "latest_daily_price_date",
+                "latest_daily_age_days",
+                "latest_source",
+                "latest_daily_source",
+                "status",
+                "issues",
+            ]
+        ]
+        st.dataframe(health_view, width="stretch", hide_index=True)
 
     st.subheader("Latest Prices")
     latest_prices = read_sql("""

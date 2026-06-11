@@ -135,11 +135,16 @@ Historical prices are stored in the `daily_prices` table.
 The system currently supports:
 
 * daily EUR-adjusted prices
+* latest-price and historical-price freshness checks
+* FX-rate sanity checks for stored market data
 * rolling return calculations
 * volatility analytics
 * drawdown analytics
 
 This layer is intended to support future research and screening systems.
+The dashboard `Market Data` tab includes a health table for active securities so
+missing, stale, invalid, or currency-mismatched prices are visible before they
+feed portfolio value, performance, and tax views.
 
 ---
 
@@ -160,7 +165,7 @@ The platform includes internal validation utilities for:
 * negative positions
 * duplicate transactions
 * missing FX rates
-* stale market prices
+* missing, stale, invalid, or currency-mismatched market prices
 
 These checks are intended to reduce silent accounting errors.
 

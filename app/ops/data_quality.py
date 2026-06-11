@@ -2,6 +2,7 @@ import pandas as pd
 from sqlalchemy import text
 
 from app.database.connection import get_engine
+from app.market_data.health import load_market_data_health
 
 
 def check_negative_positions() -> pd.DataFrame:
@@ -79,20 +80,32 @@ def check_missing_fx_rates() -> pd.DataFrame:
 
 
 def check_stale_prices(days: int = 5) -> pd.DataFrame:
-    engine = get_engine()
+    health = load_market_data_health(stale_days=days)
 
-    return pd.read_sql(
-        text(f"""
-            SELECT
-                ticker,
-                MAX(price_date) AS latest_price_date
-            FROM daily_prices
-            GROUP BY ticker
-            HAVING MAX(price_date) < CURRENT_DATE - INTERVAL '{days} days'
-            ORDER BY latest_price_date
-        """),
-        engine,
-    )
+    if health.empty:
+        return health
+
+    return health[
+        health["missing_latest_price"]
+        | health["missing_daily_price"]
+        | health["stale_latest_price"]
+        | health["stale_daily_price"]
+        | health["invalid_latest_price"]
+        | health["invalid_daily_price"]
+        | health["currency_mismatch"]
+    ][
+        [
+            "ticker",
+            "exchange",
+            "quote_currency",
+            "latest_price_date",
+            "latest_price_age_days",
+            "latest_daily_price_date",
+            "latest_daily_age_days",
+            "status",
+            "issues",
+        ]
+    ]
 
 
 def run_all_checks() -> dict:
