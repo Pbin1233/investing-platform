@@ -259,14 +259,31 @@ For the normal full-history CSV replacement workflow, use the broker refresh
 command instead of manually deleting rows:
 
 ```bash
+python -m app.imports.refresh_all_brokers
+```
+
+That command finds the latest CSV in each broker folder under
+`/data/activity imports`, dry-runs every broker, and records each broker refresh
+in `job_runs` for the Operations tab.
+
+To replace every broker's imported rows after reviewing the dry run:
+
+```bash
+python -m app.imports.refresh_all_brokers --apply --yes
+```
+
+To refresh just one broker or use a specific file, call the single-broker
+command directly:
+
+```bash
 python -m app.imports.refresh_broker \
   --broker IB \
   --file "/data/activity imports/ib/U19672266.TRANSACTIONS.20240528.20260608.csv"
 ```
 
-That command defaults to a dry run. To replace the broker's imported rows, create
-a backup, apply the full-history file, verify idempotency, and run data quality
-checks:
+That command also defaults to a dry run. To replace the broker's imported rows,
+create a backup, apply the full-history file, verify idempotency, and run data
+quality checks:
 
 ```bash
 python -m app.imports.refresh_broker \
