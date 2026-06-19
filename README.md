@@ -126,6 +126,18 @@ records the job as skipped so the dashboard does not mix closed-market and
 live/intraday prices. With the current holdings, a practical schedule is late
 evening in Europe/Rome after the US close and before the Korean market opens.
 
+Backups are written to `/data/backups`. Healthy PostgreSQL backups should be
+larger than 1 KB; tiny `.sql.gz` files are treated as suspicious and can be
+moved out of the restore path with:
+
+```bash
+python -m app.ops.archive_tiny_backups
+python -m app.ops.archive_tiny_backups --apply
+```
+
+The command defaults to a dry run and archives matching files under
+`/data/backups/archive`.
+
 ---
 
 # Historical Market Data
