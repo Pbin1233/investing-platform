@@ -14,6 +14,10 @@ from app.portfolio.allocation import (
     allocation_by_ticker,
     concentration_metrics,
 )
+from app.portfolio.activity_summary import (
+    build_activity_snapshot,
+    build_monthly_activity,
+)
 from app.portfolio.benchmark import benchmark_xirr
 from app.portfolio.broker_cash import calculate_broker_cash
 from app.portfolio.performance_history import calculate_performance_history
@@ -900,7 +904,6 @@ with research_tab:
 with activity_tab:
     st.header("Activity")
 
-    st.subheader("Transactions")
     transactions = read_sql("""
         SELECT
             trade_date,
@@ -918,6 +921,54 @@ with activity_tab:
         LIMIT 1000
     """)
 
+    cash_flows = read_sql("""
+        SELECT
+            flow_date,
+            broker_name,
+            flow_type,
+            amount,
+            currency,
+            fx_rate_to_eur,
+            amount * fx_rate_to_eur AS amount_eur,
+            notes
+        FROM cash_flows
+        ORDER BY flow_date DESC, cash_flow_id DESC
+        LIMIT 1000
+    """)
+
+    import_records = read_sql("""
+        SELECT
+            imported_at,
+            source_system,
+            source_file,
+            target_table,
+            target_id
+        FROM import_records
+        ORDER BY imported_at DESC, import_record_id DESC
+        LIMIT 200
+    """)
+
+    st.subheader("Activity Snapshot")
+    snapshot = build_activity_snapshot(transactions, cash_flows, import_records)
+    activity_cols = st.columns(4)
+    activity_cols[0].metric("Transactions Loaded", int(snapshot["trade_count"]))
+    activity_cols[1].metric("Latest Trade", snapshot["latest_trade"])
+    activity_cols[2].metric("Net Cash Flow EUR", money(snapshot["net_flow_eur"]))
+    activity_cols[3].metric("Latest Import", snapshot["latest_import"])
+    st.caption(f"Latest import file: {snapshot['latest_import_file']}")
+
+    monthly_activity = build_monthly_activity(
+        transactions,
+        cash_flows,
+        import_records,
+    )
+    if monthly_activity.empty:
+        st.info("No monthly activity yet.")
+    else:
+        st.subheader("Monthly Activity")
+        display_table(monthly_activity, width="stretch", hide_index=True)
+
+    st.subheader("Transactions")
     if transactions.empty:
         st.info("No transactions yet.")
     else:
@@ -943,21 +994,6 @@ with activity_tab:
             display_table_expander("All filtered transactions", transaction_filtered)
 
     st.subheader("Cash Flows")
-    cash_flows = read_sql("""
-        SELECT
-            flow_date,
-            broker_name,
-            flow_type,
-            amount,
-            currency,
-            fx_rate_to_eur,
-            amount * fx_rate_to_eur AS amount_eur,
-            notes
-        FROM cash_flows
-        ORDER BY flow_date DESC, cash_flow_id DESC
-        LIMIT 1000
-    """)
-
     if cash_flows.empty:
         st.info("No cash flows yet.")
     else:
@@ -981,18 +1017,6 @@ with activity_tab:
             display_table_expander("All filtered cash flows", cash_flow_filtered)
 
     st.subheader("Recent Imports")
-    import_records = read_sql("""
-        SELECT
-            imported_at,
-            source_system,
-            source_file,
-            target_table,
-            target_id
-        FROM import_records
-        ORDER BY imported_at DESC, import_record_id DESC
-        LIMIT 200
-    """)
-
     if import_records.empty:
         st.info("No import records yet.")
     else:
