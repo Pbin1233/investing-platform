@@ -7,6 +7,7 @@ from app.market_data.health import load_market_data_health, market_data_health_s
 from app.market_data.market_hours import market_sync_blockers_for_active_securities
 from app.market_data.price_analytics import calculate_price_analytics
 from app.ops.data_quality import run_all_checks
+from app.ops.job_run_summary import build_job_run_summary_rows
 from app.ops.system_health import build_system_health_rows, latest_backup_info
 from app.portfolio.allocation import (
     allocation_by_broker,
@@ -1124,8 +1125,18 @@ with ops_tab:
         run_cols[2].metric("Latest failed jobs", failures)
         run_cols[3].metric("Latest running jobs", running)
 
+        latest_job_summary = build_job_run_summary_rows(latest_jobs)
+        if latest_job_summary.empty:
+            st.info("No readable job details found yet.")
+        else:
+            display_table(
+                latest_job_summary,
+                width="stretch",
+                hide_index=True,
+            )
+
         display_table_expander(
-            "Latest job per job type",
+            "Raw latest job payloads",
             latest_jobs[
                 [
                     "job_name",
@@ -1239,6 +1250,42 @@ with ops_tab:
     if job_runs.empty:
         st.info("No job runs yet.")
     else:
-        display_table(job_runs.head(20), width="stretch", hide_index=True)
+        job_run_summary = build_job_run_summary_rows(job_runs)
+        if job_run_summary.empty:
+            st.info("No readable job run details found yet.")
+        else:
+            st.caption("Readable activity")
+            display_table(job_run_summary.head(20), width="stretch", hide_index=True)
+            if len(job_run_summary) > 20:
+                display_table_expander("All readable job run details", job_run_summary)
+
+        st.caption("Run log")
+        display_table(
+            job_runs[
+                [
+                    "id",
+                    "job_name",
+                    "status",
+                    "rows_processed",
+                    "started_at",
+                    "completed_at",
+                ]
+            ].head(20),
+            width="stretch",
+            hide_index=True,
+        )
         if len(job_runs) > 20:
-            display_table_expander("All recent job runs", job_runs)
+            display_table_expander(
+                "All recent job runs without payloads",
+                job_runs[
+                    [
+                        "id",
+                        "job_name",
+                        "status",
+                        "rows_processed",
+                        "started_at",
+                        "completed_at",
+                    ]
+                ],
+            )
+        display_table_expander("Raw recent job payloads", job_runs)
