@@ -507,6 +507,15 @@ with holdings_tab:
             hide_index=True,
         )
 
+        st.subheader("Top Holdings")
+        top_holdings_chart = (
+            holdings
+            .sort_values("market_value_eur", ascending=False)
+            .head(10)
+            .set_index("ticker")[["market_value_eur", "invested_eur"]]
+        )
+        st.bar_chart(top_holdings_chart)
+
         display_table_expander(
             "Pricing and FX details",
             holdings[
@@ -664,14 +673,27 @@ with income_tab:
 
         st.subheader("Tax Summary")
         tax_summary = build_tax_summary_table(yearly_summary)
+        if not tax_summary.empty:
+            tax_chart = (
+                tax_summary
+                .sort_values("year")
+                .set_index("year")[
+                    [
+                        "capital_gains_tax_eur",
+                        "dividend_tax_due_after_withholding_eur",
+                        "ivafe_tax_eur",
+                    ]
+                ]
+            )
+            st.bar_chart(tax_chart)
         display_table(tax_summary, width="stretch", hide_index=True)
 
         st.subheader("Latest Year Breakdown")
-        display_table(
-            build_tax_component_rows(latest),
-            width="stretch",
-            hide_index=True,
+        latest_tax_components = build_tax_component_rows(latest)
+        st.bar_chart(
+            latest_tax_components.set_index("component")[["due_after_credits_eur"]]
         )
+        display_table(latest_tax_components, width="stretch", hide_index=True)
 
         tax_columns = [
             "year",
@@ -981,6 +1003,10 @@ with activity_tab:
         st.info("No monthly activity yet.")
     else:
         st.subheader("Monthly Activity")
+        monthly_chart = monthly_activity.sort_values("month").set_index("month")
+        st.bar_chart(monthly_chart[["transactions", "cash_flows", "imported_rows"]])
+        if "net_flow_eur" in monthly_chart.columns:
+            st.bar_chart(monthly_chart[["net_flow_eur"]])
         display_table(monthly_activity, width="stretch", hide_index=True)
 
     st.subheader("Transactions")
