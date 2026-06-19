@@ -279,6 +279,30 @@ def filter_frame(
 portfolio = calculate_portfolio()
 cash = calculate_broker_cash()
 yearly_summary = calculate_yearly_summary()
+market_health = load_market_data_health(engine)
+health_summary = market_data_health_summary(market_health)
+latest_jobs = read_sql("""
+    SELECT DISTINCT ON (job_name)
+        job_name,
+        status,
+        started_at,
+        completed_at,
+        rows_processed,
+        ROUND(EXTRACT(EPOCH FROM (NOW() - started_at)) / 3600.0, 1)
+            AS age_hours,
+        message
+    FROM job_runs
+    ORDER BY job_name, started_at DESC
+""")
+checks = run_all_checks()
+backup_info = latest_backup_info()
+system_health = build_system_health_rows(
+    latest_jobs,
+    market_health,
+    checks,
+    backup_info,
+)
+system_status_counts = system_health["status"].value_counts()
 
 overview_tab, holdings_tab, performance_tab, income_tab, research_tab, activity_tab, market_tab, ops_tab = st.tabs(
     [
@@ -296,6 +320,43 @@ overview_tab, holdings_tab, performance_tab, income_tab, research_tab, activity_
 
 with overview_tab:
     st.header("Overview")
+
+    st.subheader("System Snapshot")
+    latest_maintenance = latest_jobs[
+        latest_jobs["job_name"] == "daily_maintenance"
+    ]
+    latest_maintenance_age = (
+        None
+        if latest_maintenance.empty
+        else latest_maintenance.iloc[0]["age_hours"]
+    )
+
+    snap_col1, snap_col2, snap_col3, snap_col4 = st.columns(4)
+    snap_col1.metric("Health OK", int(system_status_counts.get("OK", 0)))
+    snap_col2.metric(
+        "Needs Check",
+        int(system_status_counts.get("CHECK", 0))
+        + int(system_status_counts.get("MISSING", 0)),
+    )
+    snap_col3.metric(
+        "Market Data",
+        f"{health_summary['ok']}/{health_summary['active_securities']} OK",
+    )
+    snap_col4.metric(
+        "Maintenance Age",
+        "n/a" if pd.isna(latest_maintenance_age) else f"{latest_maintenance_age} h",
+    )
+
+    if set(system_health["status"]) == {"OK"}:
+        st.success("Operations, market data, imports, and backups are currently OK.")
+    else:
+        st.warning("One or more operational areas need attention.")
+
+    display_table(
+        system_health[["area", "status", "detail"]],
+        width="stretch",
+        hide_index=True,
+    )
 
     portfolio_by_broker = (
         portfolio.groupby("broker_name", as_index=False)["market_value_eur"].sum()
@@ -948,8 +1009,6 @@ with market_tab:
     st.header("Market Data")
 
     st.subheader("Market Data Health")
-    market_health = load_market_data_health(engine)
-    health_summary = market_data_health_summary(market_health)
 
     health_cols = st.columns(5)
     health_cols[0].metric("Active securities", health_summary["active_securities"])
@@ -1025,31 +1084,7 @@ with market_tab:
 with ops_tab:
     st.header("Operations")
 
-    latest_jobs = read_sql("""
-        SELECT DISTINCT ON (job_name)
-            job_name,
-            status,
-            started_at,
-            completed_at,
-            rows_processed,
-            ROUND(EXTRACT(EPOCH FROM (NOW() - started_at)) / 3600.0, 1)
-                AS age_hours,
-            message
-        FROM job_runs
-        ORDER BY job_name, started_at DESC
-    """)
-    checks = run_all_checks()
-
     st.subheader("System Health")
-    ops_market_health = load_market_data_health(engine)
-    backup_info = latest_backup_info()
-    system_health = build_system_health_rows(
-        latest_jobs,
-        ops_market_health,
-        checks,
-        backup_info,
-    )
-    system_status_counts = system_health["status"].value_counts()
     health_cols = st.columns(4)
     health_cols[0].metric("OK areas", int(system_status_counts.get("OK", 0)))
     health_cols[1].metric("Check areas", int(system_status_counts.get("CHECK", 0)))
