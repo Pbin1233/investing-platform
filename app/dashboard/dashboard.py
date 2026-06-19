@@ -7,6 +7,7 @@ from app.market_data.health import load_market_data_health, market_data_health_s
 from app.market_data.market_hours import market_sync_blockers_for_active_securities
 from app.market_data.price_analytics import calculate_price_analytics
 from app.ops.data_quality import run_all_checks
+from app.ops.system_health import build_system_health_rows, latest_backup_info
 from app.portfolio.allocation import (
     allocation_by_broker,
     allocation_by_ticker,
@@ -785,7 +786,6 @@ with market_tab:
 with ops_tab:
     st.header("Operations")
 
-    st.subheader("Run Summary")
     latest_jobs = read_sql("""
         SELECT DISTINCT ON (job_name)
             job_name,
@@ -799,6 +799,29 @@ with ops_tab:
         FROM job_runs
         ORDER BY job_name, started_at DESC
     """)
+    checks = run_all_checks()
+
+    st.subheader("System Health")
+    ops_market_health = load_market_data_health(engine)
+    backup_info = latest_backup_info()
+    system_health = build_system_health_rows(
+        latest_jobs,
+        ops_market_health,
+        checks,
+        backup_info,
+    )
+    system_status_counts = system_health["status"].value_counts()
+    health_cols = st.columns(4)
+    health_cols[0].metric("OK areas", int(system_status_counts.get("OK", 0)))
+    health_cols[1].metric("Check areas", int(system_status_counts.get("CHECK", 0)))
+    health_cols[2].metric(
+        "Missing areas",
+        int(system_status_counts.get("MISSING", 0)),
+    )
+    health_cols[3].metric("Latest backup", backup_info["status"])
+    st.dataframe(system_health, width="stretch", hide_index=True)
+
+    st.subheader("Run Summary")
 
     if latest_jobs.empty:
         st.info("No maintenance runs logged yet.")
@@ -901,7 +924,6 @@ with ops_tab:
         st.dataframe(broker_imports, width="stretch", hide_index=True)
 
     st.subheader("Data Quality")
-    checks = run_all_checks()
     quality_rows = []
 
     for name, df in checks.items():
