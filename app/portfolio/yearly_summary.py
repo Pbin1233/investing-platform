@@ -10,6 +10,17 @@ DIVIDEND_TAX_RATE = 0.26
 IVAFE_TAX_RATE = 0.002
 
 
+TAX_SUMMARY_COLUMNS = [
+    "year",
+    "estimated_tax_due_after_withholding_eur",
+    "capital_gains_tax_eur",
+    "dividend_tax_due_after_withholding_eur",
+    "ivafe_tax_eur",
+    "year_end_market_value_eur",
+    "year_end_unpriced_positions",
+]
+
+
 def _empty_realized_summary(by_broker: bool = False) -> pd.DataFrame:
     columns = [
         "year",
@@ -187,6 +198,63 @@ def _add_tax_estimates(summary: pd.DataFrame) -> pd.DataFrame:
     )
 
     return summary
+
+
+def build_tax_summary_table(yearly_summary: pd.DataFrame) -> pd.DataFrame:
+    if yearly_summary.empty:
+        return pd.DataFrame(columns=TAX_SUMMARY_COLUMNS)
+
+    summary = yearly_summary.copy()
+    for column in TAX_SUMMARY_COLUMNS:
+        if column not in summary.columns:
+            summary[column] = 0
+
+    return (
+        summary[TAX_SUMMARY_COLUMNS]
+        .sort_values("year", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def build_tax_component_rows(yearly_row: pd.Series) -> pd.DataFrame:
+    gross_dividend_tax = float(yearly_row.get("dividend_tax_eur", 0) or 0)
+    dividend_credit = float(
+        yearly_row.get("dividend_withholding_credit_eur", 0) or 0
+    )
+    dividend_due = float(
+        yearly_row.get("dividend_tax_due_after_withholding_eur", 0) or 0
+    )
+
+    rows = [
+        {
+            "component": "Capital gains",
+            "base_eur": float(yearly_row.get("taxable_realized_gain_eur", 0) or 0),
+            "gross_tax_eur": float(yearly_row.get("capital_gains_tax_eur", 0) or 0),
+            "credits_eur": 0.0,
+            "due_after_credits_eur": float(
+                yearly_row.get("capital_gains_tax_eur", 0) or 0
+            ),
+            "detail": f"Rate {CAPITAL_GAINS_TAX_RATE:.1%} on positive realized gains",
+        },
+        {
+            "component": "Dividends",
+            "base_eur": float(yearly_row.get("gross_dividends_eur", 0) or 0),
+            "gross_tax_eur": gross_dividend_tax,
+            "credits_eur": dividend_credit,
+            "due_after_credits_eur": dividend_due,
+            "detail": "Withholding credit capped at computed dividend tax",
+        },
+        {
+            "component": "IVAFE",
+            "base_eur": float(yearly_row.get("year_end_market_value_eur", 0) or 0),
+            "gross_tax_eur": float(yearly_row.get("ivafe_tax_eur", 0) or 0),
+            "credits_eur": 0.0,
+            "due_after_credits_eur": float(yearly_row.get("ivafe_tax_eur", 0) or 0),
+            "detail": f"Rate {IVAFE_TAX_RATE:.2%} on year-end market value",
+        },
+    ]
+
+    return pd.DataFrame(rows)
 
 
 def calculate_yearly_summary() -> pd.DataFrame:

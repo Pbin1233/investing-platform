@@ -32,6 +32,8 @@ from app.portfolio.yearly_summary import (
     CAPITAL_GAINS_TAX_RATE,
     DIVIDEND_TAX_RATE,
     IVAFE_TAX_RATE,
+    build_tax_component_rows,
+    build_tax_summary_table,
     calculate_yearly_summary,
     calculate_yearly_summary_by_broker,
 )
@@ -660,7 +662,17 @@ with income_tab:
             money(latest["estimated_tax_due_after_withholding_eur"]),
         )
 
-        st.subheader("Tax Calculation by Year")
+        st.subheader("Tax Summary")
+        tax_summary = build_tax_summary_table(yearly_summary)
+        display_table(tax_summary, width="stretch", hide_index=True)
+
+        st.subheader("Latest Year Breakdown")
+        display_table(
+            build_tax_component_rows(latest),
+            width="stretch",
+            hide_index=True,
+        )
+
         tax_columns = [
             "year",
             "realized_proceeds_eur",
@@ -680,7 +692,10 @@ with income_tab:
             "estimated_total_tax_liability_eur",
             "estimated_tax_due_after_withholding_eur",
         ]
-        display_table(yearly_summary[tax_columns], width="stretch", hide_index=True)
+        display_table_expander(
+            "Full yearly tax calculation",
+            yearly_summary[tax_columns],
+        )
 
         broker_summary = calculate_yearly_summary_by_broker()
         if not broker_summary.empty:
@@ -701,7 +716,7 @@ with income_tab:
                 "estimated_tax_due_after_withholding_eur",
             ]
             display_table_expander(
-                "Tax calculation by broker",
+                "Full broker tax calculation",
                 broker_summary[broker_tax_columns],
             )
 

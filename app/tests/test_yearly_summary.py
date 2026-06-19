@@ -3,6 +3,8 @@ import pandas as pd
 from app.portfolio.yearly_summary import (
     _add_tax_estimates,
     _summarize_realized_gains,
+    build_tax_component_rows,
+    build_tax_summary_table,
 )
 
 
@@ -116,3 +118,67 @@ def test_summarize_realized_gains_can_group_by_broker():
     assert degiro["realized_proceeds_eur"] == 200.0
     assert degiro["realized_cost_basis_eur"] == 240.0
     assert degiro["realized_gain_eur"] == -40.0
+
+
+def test_build_tax_summary_table_keeps_default_view_compact_and_recent_first():
+    yearly_summary = pd.DataFrame(
+        [
+            {
+                "year": 2025,
+                "estimated_tax_due_after_withholding_eur": 10.0,
+                "capital_gains_tax_eur": 4.0,
+                "dividend_tax_due_after_withholding_eur": 2.0,
+                "ivafe_tax_eur": 4.0,
+                "year_end_market_value_eur": 2000.0,
+                "year_end_unpriced_positions": 1,
+                "gross_dividends_eur": 99.0,
+            },
+            {
+                "year": 2026,
+                "estimated_tax_due_after_withholding_eur": 20.0,
+                "capital_gains_tax_eur": 8.0,
+                "dividend_tax_due_after_withholding_eur": 4.0,
+                "ivafe_tax_eur": 8.0,
+                "year_end_market_value_eur": 4000.0,
+                "year_end_unpriced_positions": 0,
+                "gross_dividends_eur": 199.0,
+            },
+        ]
+    )
+
+    result = build_tax_summary_table(yearly_summary)
+
+    assert list(result["year"]) == [2026, 2025]
+    assert "gross_dividends_eur" not in result.columns
+    assert list(result.columns) == [
+        "year",
+        "estimated_tax_due_after_withholding_eur",
+        "capital_gains_tax_eur",
+        "dividend_tax_due_after_withholding_eur",
+        "ivafe_tax_eur",
+        "year_end_market_value_eur",
+        "year_end_unpriced_positions",
+    ]
+
+
+def test_build_tax_component_rows_breaks_down_latest_year():
+    yearly_row = pd.Series(
+        {
+            "taxable_realized_gain_eur": 200.0,
+            "capital_gains_tax_eur": 52.0,
+            "gross_dividends_eur": 100.0,
+            "dividend_tax_eur": 26.0,
+            "dividend_withholding_credit_eur": 15.0,
+            "dividend_tax_due_after_withholding_eur": 11.0,
+            "year_end_market_value_eur": 10_000.0,
+            "ivafe_tax_eur": 20.0,
+        }
+    )
+
+    result = build_tax_component_rows(yearly_row)
+
+    assert list(result["component"]) == ["Capital gains", "Dividends", "IVAFE"]
+    dividends = result[result["component"] == "Dividends"].iloc[0]
+    assert dividends["gross_tax_eur"] == 26.0
+    assert dividends["credits_eur"] == 15.0
+    assert dividends["due_after_credits_eur"] == 11.0
