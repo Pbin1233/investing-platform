@@ -231,6 +231,11 @@ def display_table(df: pd.DataFrame, **kwargs) -> None:
     st.dataframe(df, **kwargs)
 
 
+def display_table_expander(label: str, df: pd.DataFrame, expanded: bool = False) -> None:
+    with st.expander(label, expanded=expanded):
+        display_table(df, width="stretch", hide_index=True)
+
+
 def add_pct_column(df: pd.DataFrame, source_col: str, target_col: str) -> pd.DataFrame:
     df = df.copy()
     df[target_col] = df[source_col].apply(
@@ -415,7 +420,7 @@ with holdings_tab:
         col3.metric("Unrealized P/L EUR", money(unrealized))
         col4.metric("Unrealized P/L %", percent(unrealized_pct))
 
-        st.subheader("Current Positions")
+        st.subheader("Position Summary")
         display_table(
             holdings[
                 [
@@ -427,14 +432,30 @@ with holdings_tab:
                     "invested_eur",
                     "unrealized_pl_eur",
                     "unrealized_pl_pct",
+                    "price_date",
+                ]
+            ].sort_values("market_value_eur", ascending=False),
+            width="stretch",
+            hide_index=True,
+        )
+
+        display_table_expander(
+            "Pricing and FX details",
+            holdings[
+                [
+                    "broker_name",
+                    "ticker",
+                    "quantity",
                     "close_price",
                     "currency",
                     "fx_rate_to_eur",
                     "price_date",
+                    "market_value_eur",
+                    "invested_eur",
+                    "unrealized_pl_eur",
+                    "unrealized_pl_pct",
                 ]
-            ],
-            width="stretch",
-            hide_index=True,
+            ].sort_values("market_value_eur", ascending=False),
         )
 
         st.subheader("Allocation")
@@ -448,7 +469,13 @@ with holdings_tab:
 
         ticker_alloc = allocation_by_ticker()
         if not ticker_alloc.empty:
-            display_table(ticker_alloc, width="stretch", hide_index=True)
+            display_table(
+                ticker_alloc.head(10),
+                width="stretch",
+                hide_index=True,
+            )
+            if len(ticker_alloc) > 10:
+                display_table_expander("All ticker allocations", ticker_alloc)
 
         broker_alloc = allocation_by_broker()
         if not broker_alloc.empty:
@@ -591,7 +618,6 @@ with income_tab:
 
         broker_summary = calculate_yearly_summary_by_broker()
         if not broker_summary.empty:
-            st.subheader("Tax Calculation by Broker")
             broker_tax_columns = [
                 "year",
                 "broker_name",
@@ -608,10 +634,9 @@ with income_tab:
                 "ivafe_tax_eur",
                 "estimated_tax_due_after_withholding_eur",
             ]
-            display_table(
+            display_table_expander(
+                "Tax calculation by broker",
                 broker_summary[broker_tax_columns],
-                width="stretch",
-                hide_index=True,
             )
 
         with st.expander("Tax assumptions"):
@@ -679,9 +704,23 @@ with income_tab:
             broker_key="dividend_broker",
             ticker_key="dividend_ticker",
         )
+        gross_total = pd.to_numeric(dividend_filtered["gross_amount_eur"]).sum()
+        withholding_total = pd.to_numeric(
+            dividend_filtered["withholding_tax_eur"]
+        ).sum()
         total_net = pd.to_numeric(dividend_filtered["net_amount_eur"]).sum()
-        st.metric("Filtered Net Dividends EUR", money(total_net))
-        display_table(dividend_filtered, width="stretch", hide_index=True)
+        div_col1, div_col2, div_col3 = st.columns(3)
+        div_col1.metric("Gross Dividends", money(gross_total))
+        div_col2.metric("Withholding", money(withholding_total))
+        div_col3.metric("Net Dividends", money(total_net))
+
+        display_table(
+            dividend_filtered.head(12),
+            width="stretch",
+            hide_index=True,
+        )
+        if len(dividend_filtered) > 12:
+            display_table_expander("All filtered dividends", dividend_filtered)
 
     st.subheader("Realized Gains - LIFO")
     gains = calculate_all_realized_gains()
@@ -693,7 +732,9 @@ with income_tab:
             "Total Realized Gain EUR",
             money(pd.to_numeric(gains["realized_gain_eur"]).sum()),
         )
-        display_table(gains, width="stretch", hide_index=True)
+        display_table(gains.head(12), width="stretch", hide_index=True)
+        if len(gains) > 12:
+            display_table_expander("All realized gains", gains)
 
 
 with research_tab:
@@ -824,7 +865,20 @@ with activity_tab:
             ticker_key="transaction_ticker",
             action_key="transaction_action",
         )
-        display_table(transaction_filtered, width="stretch", hide_index=True)
+        action_counts = transaction_filtered["action"].value_counts()
+        tx_col1, tx_col2, tx_col3, tx_col4 = st.columns(4)
+        tx_col1.metric("Rows", len(transaction_filtered))
+        tx_col2.metric("Buys", int(action_counts.get("BUY", 0)))
+        tx_col3.metric("Sells", int(action_counts.get("SELL", 0)))
+        tx_col4.metric("Splits", int(action_counts.get("SPLIT", 0)))
+
+        display_table(
+            transaction_filtered.head(15),
+            width="stretch",
+            hide_index=True,
+        )
+        if len(transaction_filtered) > 15:
+            display_table_expander("All filtered transactions", transaction_filtered)
 
     st.subheader("Cash Flows")
     cash_flows = read_sql("""
@@ -855,7 +909,14 @@ with activity_tab:
             cash_flow_filtered = cash_flow_filtered[
                 cash_flow_filtered["flow_type"] == flow_type
             ]
-        display_table(cash_flow_filtered, width="stretch", hide_index=True)
+        flow_totals = cash_flow_filtered.groupby("flow_type")["amount_eur"].sum()
+        flow_col1, flow_col2, flow_col3 = st.columns(3)
+        flow_col1.metric("Deposits", money(flow_totals.get("DEPOSIT", 0)))
+        flow_col2.metric("Withdrawals", money(flow_totals.get("WITHDRAWAL", 0)))
+        flow_col3.metric("Net Flow", money(cash_flow_filtered["amount_eur"].sum()))
+        display_table(cash_flow_filtered.head(15), width="stretch", hide_index=True)
+        if len(cash_flow_filtered) > 15:
+            display_table_expander("All filtered cash flows", cash_flow_filtered)
 
     st.subheader("Recent Imports")
     import_records = read_sql("""
@@ -873,7 +934,14 @@ with activity_tab:
     if import_records.empty:
         st.info("No import records yet.")
     else:
-        display_table(import_records, width="stretch", hide_index=True)
+        latest_imports = (
+            import_records
+            .sort_values("imported_at", ascending=False)
+            .groupby("source_system", as_index=False)
+            .first()
+        )
+        display_table(latest_imports, width="stretch", hide_index=True)
+        display_table_expander("Recent import record details", import_records)
 
 
 with market_tab:
@@ -938,7 +1006,7 @@ with market_tab:
         ORDER BY s.ticker, p.price_date DESC NULLS LAST, p.price_id DESC NULLS LAST
     """)
 
-    display_table(latest_prices, width="stretch", hide_index=True)
+    display_table_expander("Latest price details", latest_prices)
 
     st.subheader("Historical Price Analytics")
     price_analytics = calculate_price_analytics()
@@ -949,7 +1017,9 @@ with market_tab:
         st.caption(
             "Returns, volatility, and drawdown are based on stored daily EUR-adjusted prices."
         )
-        display_table(price_analytics, width="stretch", hide_index=True)
+        display_table(price_analytics.head(10), width="stretch", hide_index=True)
+        if len(price_analytics) > 10:
+            display_table_expander("All historical price analytics", price_analytics)
 
 
 with ops_tab:
@@ -1019,7 +1089,8 @@ with ops_tab:
         run_cols[2].metric("Latest failed jobs", failures)
         run_cols[3].metric("Latest running jobs", running)
 
-        display_table(
+        display_table_expander(
+            "Latest job per job type",
             latest_jobs[
                 [
                     "job_name",
@@ -1031,8 +1102,6 @@ with ops_tab:
                     "message",
                 ]
             ],
-            width="stretch",
-            hide_index=True,
         )
 
     st.subheader("Broker Import Summary")
@@ -1135,4 +1204,6 @@ with ops_tab:
     if job_runs.empty:
         st.info("No job runs yet.")
     else:
-        display_table(job_runs, width="stretch", hide_index=True)
+        display_table(job_runs.head(20), width="stretch", hide_index=True)
+        if len(job_runs) > 20:
+            display_table_expander("All recent job runs", job_runs)
