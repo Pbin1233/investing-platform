@@ -5,7 +5,7 @@ import pandas as pd
 
 
 def _to_datetime(series: pd.Series) -> pd.Series:
-    return pd.to_datetime(series, errors="coerce", format="mixed")
+    return pd.to_datetime(series, errors="coerce", format="mixed", utc=True)
 
 
 def _date_label(value: Any) -> str:
@@ -25,7 +25,7 @@ def _with_month(df: pd.DataFrame, date_column: str) -> pd.DataFrame:
     df = df.copy()
     dates = _to_datetime(df[date_column])
     df = df[dates.notna()].copy()
-    df["month"] = dates[dates.notna()].dt.to_period("M").astype(str)
+    df["month"] = dates[dates.notna()].dt.tz_convert(None).dt.to_period("M").astype(str)
     return df
 
 
