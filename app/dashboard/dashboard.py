@@ -34,7 +34,109 @@ from app.research.ideas.ideas import build_research_ideas, research_summary
 
 
 st.set_page_config(page_title="Investing Platform", layout="wide")
-st.title("Investing Platform")
+
+st.markdown(
+    """
+    <style>
+    :root {
+        --surface: #ffffff;
+        --surface-muted: #f7f9fc;
+        --border: #d9e2ec;
+        --text-muted: #52616b;
+        --accent: #1f6feb;
+        --good: #1f883d;
+        --warn: #b7791f;
+    }
+
+    .stApp {
+        background: var(--surface-muted);
+    }
+
+    .block-container {
+        padding-top: 1.75rem;
+        padding-bottom: 3rem;
+        max-width: 1480px;
+    }
+
+    .app-header {
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1.15rem 1.35rem;
+        margin-bottom: 1rem;
+    }
+
+    .app-title {
+        color: #102a43;
+        font-size: 1.65rem;
+        font-weight: 700;
+        line-height: 1.15;
+        margin: 0;
+    }
+
+    .app-subtitle {
+        color: var(--text-muted);
+        font-size: 0.92rem;
+        margin-top: 0.25rem;
+    }
+
+    div[data-testid="stMetric"] {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 8px;
+        padding: 0.85rem 0.9rem;
+        box-shadow: 0 1px 2px rgba(16, 42, 67, 0.04);
+    }
+
+    div[data-testid="stMetric"] label {
+        color: var(--text-muted) !important;
+        font-size: 0.78rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0 !important;
+    }
+
+    h1, h2, h3 {
+        color: #102a43;
+        letter-spacing: 0;
+    }
+
+    h2 {
+        padding-top: 0.3rem;
+    }
+
+    h3 {
+        border-top: 1px solid var(--border);
+        padding-top: 1rem;
+        margin-top: 1.4rem;
+    }
+
+    div[data-testid="stDataFrame"] {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--surface);
+    }
+
+    div[data-testid="stTabs"] button {
+        font-weight: 600;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <div class="app-header">
+        <div class="app-title">Investing Platform</div>
+        <div class="app-subtitle">
+            Portfolio accounting, market data health, broker imports, and tax audit.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 engine = get_engine()
 
@@ -60,6 +162,73 @@ def xirr_percent(value) -> str:
     if value is None or pd.isna(value):
         return "n/a"
     return f"{float(value) * 100:,.2f}%"
+
+
+def _is_numeric_like(series: pd.Series) -> bool:
+    if pd.api.types.is_numeric_dtype(series):
+        return True
+
+    converted = pd.to_numeric(series, errors="coerce")
+    return converted.notna().any()
+
+
+def table_column_config(df: pd.DataFrame) -> dict:
+    config = {}
+
+    for column in df.columns:
+        lower = str(column).lower()
+        series = df[column]
+
+        if lower.endswith("_at"):
+            config[column] = st.column_config.DatetimeColumn(
+                str(column),
+                format="YYYY-MM-DD HH:mm",
+            )
+        elif "date" in lower:
+            config[column] = st.column_config.DateColumn(
+                str(column),
+                format="YYYY-MM-DD",
+            )
+        elif lower in {"status", "mode", "action", "broker", "broker_name"}:
+            config[column] = st.column_config.TextColumn(str(column), width="small")
+        elif _is_numeric_like(series):
+            if lower.endswith("_pct") or lower.endswith("pct"):
+                config[column] = st.column_config.NumberColumn(
+                    str(column),
+                    format="%.2f%%",
+                )
+            elif lower.endswith("_eur") or "amount_eur" in lower:
+                config[column] = st.column_config.NumberColumn(
+                    str(column),
+                    format="€ %.2f",
+                )
+            elif "quantity" in lower:
+                config[column] = st.column_config.NumberColumn(
+                    str(column),
+                    format="%.6f",
+                )
+            elif "age" in lower or "count" in lower or lower.endswith("_rows"):
+                config[column] = st.column_config.NumberColumn(
+                    str(column),
+                    format="%.1f",
+                )
+            else:
+                config[column] = st.column_config.NumberColumn(
+                    str(column),
+                    format="%.4f",
+                )
+
+    return config
+
+
+def display_table(df: pd.DataFrame, **kwargs) -> None:
+    kwargs.setdefault("width", "stretch")
+    kwargs.setdefault("hide_index", True)
+
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        kwargs.setdefault("column_config", table_column_config(df))
+
+    st.dataframe(df, **kwargs)
 
 
 def add_pct_column(df: pd.DataFrame, source_col: str, target_col: str) -> pd.DataFrame:
@@ -156,11 +325,11 @@ with overview_tab:
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Cash EUR", money(total_cash))
         col2.metric("Securities EUR", money(total_securities))
-        col3.metric("Total Account Value EUR", money(total_account))
-        col4.metric("Latest Tax Due EUR", money(latest_tax_due))
+        col3.metric("Total Value EUR", money(total_account))
+        col4.metric("Tax Due EUR", money(latest_tax_due))
 
         st.subheader("Accounts")
-        st.dataframe(
+        display_table(
             account_summary[
                 [
                     "broker_name",
@@ -204,7 +373,7 @@ with overview_tab:
             if total_value
             else 0
         )
-        st.dataframe(
+        display_table(
             largest_positions[
                 [
                     "broker_name",
@@ -247,7 +416,7 @@ with holdings_tab:
         col4.metric("Unrealized P/L %", percent(unrealized_pct))
 
         st.subheader("Current Positions")
-        st.dataframe(
+        display_table(
             holdings[
                 [
                     "broker_name",
@@ -279,12 +448,12 @@ with holdings_tab:
 
         ticker_alloc = allocation_by_ticker()
         if not ticker_alloc.empty:
-            st.dataframe(ticker_alloc, width="stretch", hide_index=True)
+            display_table(ticker_alloc, width="stretch", hide_index=True)
 
         broker_alloc = allocation_by_broker()
         if not broker_alloc.empty:
             st.subheader("Broker Allocation")
-            st.dataframe(broker_alloc, width="stretch", hide_index=True)
+            display_table(broker_alloc, width="stretch", hide_index=True)
 
 
 with performance_tab:
@@ -330,7 +499,7 @@ with performance_tab:
         )
 
         with st.expander("Performance history table"):
-            st.dataframe(performance_history, width="stretch", hide_index=True)
+            display_table(performance_history, width="stretch", hide_index=True)
 
     st.subheader("Broker XIRR")
     broker_xirr = calculate_broker_xirr()
@@ -339,7 +508,7 @@ with performance_tab:
         st.info("No broker XIRR data yet.")
     else:
         broker_display = add_pct_column(broker_xirr, "xirr", "xirr_pct")
-        st.dataframe(
+        display_table(
             broker_display[
                 [
                     "broker_name",
@@ -360,7 +529,7 @@ with performance_tab:
         st.info("No position XIRR data yet.")
     else:
         position_display = add_pct_column(position_xirr, "xirr", "xirr_pct")
-        st.dataframe(
+        display_table(
             position_display[
                 [
                     "ticker",
@@ -390,11 +559,11 @@ with income_tab:
         col1.metric("Tax Year", int(latest["year"]))
         col2.metric("Taxable Gains EUR", money(latest["taxable_realized_gain_eur"]))
         col3.metric(
-            "Dividend Tax Due EUR",
+            "Dividend Tax Due",
             money(latest["dividend_tax_due_after_withholding_eur"]),
         )
         col4.metric(
-            "Estimated Due EUR",
+            "Estimated Due",
             money(latest["estimated_tax_due_after_withholding_eur"]),
         )
 
@@ -418,7 +587,7 @@ with income_tab:
             "estimated_total_tax_liability_eur",
             "estimated_tax_due_after_withholding_eur",
         ]
-        st.dataframe(yearly_summary[tax_columns], width="stretch", hide_index=True)
+        display_table(yearly_summary[tax_columns], width="stretch", hide_index=True)
 
         broker_summary = calculate_yearly_summary_by_broker()
         if not broker_summary.empty:
@@ -439,14 +608,14 @@ with income_tab:
                 "ivafe_tax_eur",
                 "estimated_tax_due_after_withholding_eur",
             ]
-            st.dataframe(
+            display_table(
                 broker_summary[broker_tax_columns],
                 width="stretch",
                 hide_index=True,
             )
 
         with st.expander("Tax assumptions"):
-            st.dataframe(
+            display_table(
                 pd.DataFrame(
                     [
                         {
@@ -512,7 +681,7 @@ with income_tab:
         )
         total_net = pd.to_numeric(dividend_filtered["net_amount_eur"]).sum()
         st.metric("Filtered Net Dividends EUR", money(total_net))
-        st.dataframe(dividend_filtered, width="stretch", hide_index=True)
+        display_table(dividend_filtered, width="stretch", hide_index=True)
 
     st.subheader("Realized Gains - LIFO")
     gains = calculate_all_realized_gains()
@@ -524,7 +693,7 @@ with income_tab:
             "Total Realized Gain EUR",
             money(pd.to_numeric(gains["realized_gain_eur"]).sum()),
         )
-        st.dataframe(gains, width="stretch", hide_index=True)
+        display_table(gains, width="stretch", hide_index=True)
 
 
 with research_tab:
@@ -567,7 +736,7 @@ with research_tab:
             filtered_ideas = filtered_ideas[filtered_ideas["region"] == region]
 
         st.subheader("Idea Pipeline")
-        st.dataframe(
+        display_table(
             filtered_ideas[
                 [
                     "ticker",
@@ -588,7 +757,7 @@ with research_tab:
         )
 
         with st.expander("Thesis notes"):
-            st.dataframe(
+            display_table(
                 filtered_ideas[
                     [
                         "ticker",
@@ -610,7 +779,7 @@ with research_tab:
         if target_gap.empty:
             st.info("No target weights set for the filtered ideas.")
         else:
-            st.dataframe(
+            display_table(
                 target_gap[
                     [
                         "ticker",
@@ -655,7 +824,7 @@ with activity_tab:
             ticker_key="transaction_ticker",
             action_key="transaction_action",
         )
-        st.dataframe(transaction_filtered, width="stretch", hide_index=True)
+        display_table(transaction_filtered, width="stretch", hide_index=True)
 
     st.subheader("Cash Flows")
     cash_flows = read_sql("""
@@ -686,7 +855,7 @@ with activity_tab:
             cash_flow_filtered = cash_flow_filtered[
                 cash_flow_filtered["flow_type"] == flow_type
             ]
-        st.dataframe(cash_flow_filtered, width="stretch", hide_index=True)
+        display_table(cash_flow_filtered, width="stretch", hide_index=True)
 
     st.subheader("Recent Imports")
     import_records = read_sql("""
@@ -704,7 +873,7 @@ with activity_tab:
     if import_records.empty:
         st.info("No import records yet.")
     else:
-        st.dataframe(import_records, width="stretch", hide_index=True)
+        display_table(import_records, width="stretch", hide_index=True)
 
 
 with market_tab:
@@ -748,7 +917,7 @@ with market_tab:
                 "issues",
             ]
         ]
-        st.dataframe(health_view, width="stretch", hide_index=True)
+        display_table(health_view, width="stretch", hide_index=True)
 
     st.subheader("Latest Prices")
     latest_prices = read_sql("""
@@ -769,7 +938,7 @@ with market_tab:
         ORDER BY s.ticker, p.price_date DESC NULLS LAST, p.price_id DESC NULLS LAST
     """)
 
-    st.dataframe(latest_prices, width="stretch", hide_index=True)
+    display_table(latest_prices, width="stretch", hide_index=True)
 
     st.subheader("Historical Price Analytics")
     price_analytics = calculate_price_analytics()
@@ -780,7 +949,7 @@ with market_tab:
         st.caption(
             "Returns, volatility, and drawdown are based on stored daily EUR-adjusted prices."
         )
-        st.dataframe(price_analytics, width="stretch", hide_index=True)
+        display_table(price_analytics, width="stretch", hide_index=True)
 
 
 with ops_tab:
@@ -819,7 +988,13 @@ with ops_tab:
         int(system_status_counts.get("MISSING", 0)),
     )
     health_cols[3].metric("Latest backup", backup_info["status"])
-    st.dataframe(system_health, width="stretch", hide_index=True)
+
+    if set(system_health["status"]) == {"OK"}:
+        st.success("All monitored operational areas are OK.")
+    else:
+        st.warning("One or more operational areas need attention.")
+
+    display_table(system_health, width="stretch", hide_index=True)
 
     st.subheader("Run Summary")
 
@@ -844,7 +1019,7 @@ with ops_tab:
         run_cols[2].metric("Latest failed jobs", failures)
         run_cols[3].metric("Latest running jobs", running)
 
-        st.dataframe(
+        display_table(
             latest_jobs[
                 [
                     "job_name",
@@ -921,7 +1096,7 @@ with ops_tab:
             "Oldest latest import",
             f"{broker_imports['age_days'].max()} d",
         )
-        st.dataframe(broker_imports, width="stretch", hide_index=True)
+        display_table(broker_imports, width="stretch", hide_index=True)
 
     st.subheader("Data Quality")
     quality_rows = []
@@ -935,12 +1110,12 @@ with ops_tab:
             }
         )
 
-    st.dataframe(pd.DataFrame(quality_rows), width="stretch", hide_index=True)
+    display_table(pd.DataFrame(quality_rows), width="stretch", hide_index=True)
 
     for name, df in checks.items():
         if not df.empty:
             with st.expander(f"{name} details"):
-                st.dataframe(df, width="stretch", hide_index=True)
+                display_table(df, width="stretch", hide_index=True)
 
     st.subheader("Job Runs")
     job_runs = read_sql("""
@@ -960,4 +1135,4 @@ with ops_tab:
     if job_runs.empty:
         st.info("No job runs yet.")
     else:
-        st.dataframe(job_runs, width="stretch", hide_index=True)
+        display_table(job_runs, width="stretch", hide_index=True)
