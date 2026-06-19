@@ -36,6 +36,10 @@ def _compact(value: Any, max_length: int = 180) -> str:
     return f"{text[: max_length - 1]}..."
 
 
+def _display_value(value: Any) -> str:
+    return _compact(value, max_length=80)
+
+
 def _parse_message(message: Any) -> dict[str, Any] | None:
     if _is_blank(message):
         return None
@@ -104,8 +108,8 @@ def _rows_for_payload(row: pd.Series, payload: dict[str, Any]) -> list[dict[str,
     base = {
         "job_name": row.get("job_name"),
         "status": row.get("status"),
-        "started_at": row.get("started_at"),
-        "completed_at": row.get("completed_at"),
+        "started_at": _display_value(row.get("started_at")),
+        "completed_at": _display_value(row.get("completed_at")),
     }
 
     if payload.get("kind") == "broker_refresh":
@@ -122,8 +126,12 @@ def _rows_for_payload(row: pd.Series, payload: dict[str, Any]) -> list[dict[str,
                 {
                     **base,
                     "status": stage.get("status") or base["status"],
-                    "started_at": stage.get("started_at") or base["started_at"],
-                    "completed_at": stage.get("completed_at") or base["completed_at"],
+                    "started_at": _display_value(
+                        stage.get("started_at") or base["started_at"]
+                    ),
+                    "completed_at": _display_value(
+                        stage.get("completed_at") or base["completed_at"]
+                    ),
                     "stage": stage.get("stage") or "stage",
                     "detail": _compact(stage.get("message")),
                 }
@@ -164,8 +172,8 @@ def build_job_run_summary_rows(job_runs: pd.DataFrame) -> pd.DataFrame:
             {
                 "job_name": row.get("job_name"),
                 "status": row.get("status"),
-                "started_at": row.get("started_at"),
-                "completed_at": row.get("completed_at"),
+                "started_at": _display_value(row.get("started_at")),
+                "completed_at": _display_value(row.get("completed_at")),
                 "stage": "summary",
                 "detail": _compact(row.get("message")),
             }
