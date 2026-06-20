@@ -161,7 +161,7 @@ def _parse_purchase(source_file: str, source_hash: str, text_value: str) -> dict
         return None
 
     quantity = _decimal(nominal.group(1))
-    trade_price = _decimal(price.group(1))
+    trade_price = _decimal(price.group(1)) / Decimal("100")
     return {
         "trade_date": trade_date,
         "broker_name": BROKER_NAME,

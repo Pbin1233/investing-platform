@@ -23,7 +23,7 @@ def test_parse_purchase_from_confirmation_text():
     assert result["trade_date"].isoformat() == "2023-03-14"
     assert result["ticker"] == BTP_TICKER
     assert result["quantity"] == Decimal("25000.000")
-    assert result["price"] == Decimal("100.000000")
+    assert result["price"] == Decimal("1.000000")
     assert result["action"] == "BUY"
 
 
