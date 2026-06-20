@@ -31,9 +31,14 @@ def calculate_broker_cash():
             GROUP BY broker_name
         ),
 
+        cash_reportable_brokers AS (
+            SELECT DISTINCT broker_name
+            FROM cash_flows
+        ),
+
         trade_totals AS (
             SELECT
-                broker_name,
+                t.broker_name,
                 SUM(
                     CASE
                         WHEN action = 'BUY'
@@ -43,16 +48,20 @@ def calculate_broker_cash():
                         ELSE 0
                     END
                 ) AS cash_from_trades_eur
-            FROM transactions
-            GROUP BY broker_name
+            FROM transactions t
+            JOIN cash_reportable_brokers cb
+              ON cb.broker_name = t.broker_name
+            GROUP BY t.broker_name
         ),
 
         dividend_totals AS (
             SELECT
-                broker_name,
-                SUM(net_amount * fx_rate_to_eur) AS cash_from_dividends_eur
-            FROM dividends
-            GROUP BY broker_name
+                d.broker_name,
+                SUM(d.net_amount * d.fx_rate_to_eur) AS cash_from_dividends_eur
+            FROM dividends d
+            JOIN cash_reportable_brokers cb
+              ON cb.broker_name = d.broker_name
+            GROUP BY d.broker_name
         ),
 
         brokers_all AS (

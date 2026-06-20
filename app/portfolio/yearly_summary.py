@@ -8,6 +8,7 @@ from app.portfolio.realized_gains import calculate_all_realized_gains
 CAPITAL_GAINS_TAX_RATE = 0.26
 DIVIDEND_TAX_RATE = 0.26
 IVAFE_TAX_RATE = 0.002
+FINAL_WITHHOLDING_TICKERS = ("IT0005532715",)
 
 
 TAX_SUMMARY_COLUMNS = [
@@ -184,6 +185,14 @@ def _year_end_market_values(
 
 def _add_tax_estimates(summary: pd.DataFrame) -> pd.DataFrame:
     summary = summary.copy()
+    taxable_dividends = summary.get(
+        "taxable_dividends_eur",
+        summary["gross_dividends_eur"],
+    )
+    creditable_withholding = summary.get(
+        "creditable_withholding_tax_eur",
+        summary["withholding_tax_eur"],
+    )
 
     summary["taxable_realized_gain_eur"] = (
         summary["realized_gain_eur"].clip(lower=0)
@@ -192,11 +201,12 @@ def _add_tax_estimates(summary: pd.DataFrame) -> pd.DataFrame:
         summary["taxable_realized_gain_eur"] * CAPITAL_GAINS_TAX_RATE
     )
     summary["dividend_tax_eur"] = (
-        summary["gross_dividends_eur"] * DIVIDEND_TAX_RATE
+        taxable_dividends * DIVIDEND_TAX_RATE
     )
-    summary["dividend_withholding_credit_eur"] = summary[
-        ["withholding_tax_eur", "dividend_tax_eur"]
-    ].min(axis=1)
+    summary["dividend_withholding_credit_eur"] = pd.concat(
+        [creditable_withholding, summary["dividend_tax_eur"]],
+        axis=1,
+    ).min(axis=1)
     summary["dividend_tax_due_after_withholding_eur"] = (
         summary["dividend_tax_eur"]
         - summary["dividend_withholding_credit_eur"]
@@ -256,11 +266,16 @@ def build_tax_component_rows(yearly_row: pd.Series) -> pd.DataFrame:
         },
         {
             "component": "Dividends",
-            "base_eur": float(yearly_row.get("gross_dividends_eur", 0) or 0),
+            "base_eur": float(
+                yearly_row.get(
+                    "taxable_dividends_eur",
+                    yearly_row.get("gross_dividends_eur", 0),
+                ) or 0
+            ),
             "gross_tax_eur": gross_dividend_tax,
             "credits_eur": dividend_credit,
             "due_after_credits_eur": dividend_due,
-            "detail": "Withholding credit capped at computed dividend tax",
+            "detail": "Withholding credit capped at computed dividend tax; final-withholding instruments excluded",
         },
         {
             "component": "IVAFE",
@@ -277,6 +292,9 @@ def build_tax_component_rows(yearly_row: pd.Series) -> pd.DataFrame:
 
 def calculate_yearly_summary() -> pd.DataFrame:
     engine = get_engine()
+    final_withholding_tickers = ", ".join(
+        f"'{ticker}'" for ticker in FINAL_WITHHOLDING_TICKERS
+    )
 
     cash_flows = pd.read_sql(
         text("""
@@ -293,12 +311,28 @@ def calculate_yearly_summary() -> pd.DataFrame:
     )
 
     dividends = pd.read_sql(
-        text("""
+        text(f"""
             SELECT
                 EXTRACT(YEAR FROM payment_date)::INT AS year,
                 SUM(gross_amount * fx_rate_to_eur) AS gross_dividends_eur,
                 SUM(withholding_tax * fx_rate_to_eur) AS withholding_tax_eur,
-                SUM(net_amount * fx_rate_to_eur) AS net_dividends_eur
+                SUM(net_amount * fx_rate_to_eur) AS net_dividends_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN 0 ELSE gross_amount * fx_rate_to_eur END
+                ) AS taxable_dividends_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN 0 ELSE withholding_tax * fx_rate_to_eur END
+                ) AS creditable_withholding_tax_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN gross_amount * fx_rate_to_eur ELSE 0 END
+                ) AS final_withholding_income_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN withholding_tax * fx_rate_to_eur ELSE 0 END
+                ) AS final_withholding_tax_eur
             FROM dividends
             GROUP BY year
         """),
@@ -332,6 +366,10 @@ def calculate_yearly_summary() -> pd.DataFrame:
         "gross_dividends_eur",
         "withholding_tax_eur",
         "net_dividends_eur",
+        "taxable_dividends_eur",
+        "creditable_withholding_tax_eur",
+        "final_withholding_income_eur",
+        "final_withholding_tax_eur",
         "realized_proceeds_eur",
         "realized_cost_basis_eur",
         "realized_gain_eur",
@@ -353,6 +391,9 @@ def calculate_yearly_summary() -> pd.DataFrame:
 
 def calculate_yearly_summary_by_broker() -> pd.DataFrame:
     engine = get_engine()
+    final_withholding_tickers = ", ".join(
+        f"'{ticker}'" for ticker in FINAL_WITHHOLDING_TICKERS
+    )
 
     cash_flows = pd.read_sql(
         text("""
@@ -368,13 +409,29 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
     )
 
     dividends = pd.read_sql(
-        text("""
+        text(f"""
             SELECT
                 EXTRACT(YEAR FROM payment_date)::INT AS year,
                 broker_name,
                 SUM(gross_amount * fx_rate_to_eur) AS gross_dividends_eur,
                 SUM(withholding_tax * fx_rate_to_eur) AS withholding_tax_eur,
-                SUM(net_amount * fx_rate_to_eur) AS net_dividends_eur
+                SUM(net_amount * fx_rate_to_eur) AS net_dividends_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN 0 ELSE gross_amount * fx_rate_to_eur END
+                ) AS taxable_dividends_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN 0 ELSE withholding_tax * fx_rate_to_eur END
+                ) AS creditable_withholding_tax_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN gross_amount * fx_rate_to_eur ELSE 0 END
+                ) AS final_withholding_income_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN withholding_tax * fx_rate_to_eur ELSE 0 END
+                ) AS final_withholding_tax_eur
             FROM dividends
             GROUP BY year, broker_name
         """),
@@ -417,6 +474,10 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
         "gross_dividends_eur",
         "withholding_tax_eur",
         "net_dividends_eur",
+        "taxable_dividends_eur",
+        "creditable_withholding_tax_eur",
+        "final_withholding_income_eur",
+        "final_withholding_tax_eur",
         "realized_proceeds_eur",
         "realized_cost_basis_eur",
         "realized_gain_eur",

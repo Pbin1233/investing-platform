@@ -56,6 +56,32 @@ def test_add_tax_estimates_does_not_tax_negative_realized_gains():
     assert result["estimated_tax_due_after_withholding_eur"] == 0.0
 
 
+def test_add_tax_estimates_excludes_final_withholding_income_from_dividend_tax():
+    summary = pd.DataFrame(
+        [
+            {
+                "year": 2025,
+                "gross_dividends_eur": 878.24,
+                "taxable_dividends_eur": 0.0,
+                "withholding_tax_eur": 109.78,
+                "creditable_withholding_tax_eur": 0.0,
+                "final_withholding_income_eur": 878.24,
+                "final_withholding_tax_eur": 109.78,
+                "realized_gain_eur": 0.0,
+                "year_end_market_value_eur": 25_402.78,
+            }
+        ]
+    )
+
+    result = _add_tax_estimates(summary).iloc[0]
+
+    assert result["dividend_tax_eur"] == 0.0
+    assert result["dividend_withholding_credit_eur"] == 0.0
+    assert result["dividend_tax_due_after_withholding_eur"] == 0.0
+    assert result["ivafe_tax_eur"] == 50.80556
+    assert result["estimated_tax_due_after_withholding_eur"] == 50.80556
+
+
 def test_summarize_realized_gains_groups_proceeds_cost_basis_and_gain():
     gains = pd.DataFrame(
         [
