@@ -20,6 +20,17 @@ def calculate_portfolio():
             ORDER BY ticker, price_date DESC, price_id DESC
         ),
 
+        latest_broker_valuations AS (
+            SELECT DISTINCT ON (broker_name, ticker)
+                broker_name,
+                ticker,
+                valuation_date,
+                market_value_eur,
+                currency
+            FROM broker_position_valuations
+            ORDER BY broker_name, ticker, valuation_date DESC, valuation_id DESC
+        ),
+
         invested AS (
             SELECT
                 broker_name,
@@ -46,24 +57,51 @@ def calculate_portfolio():
             lp.currency,
             lp.fx_rate_to_eur,
             lp.price_date,
+            lbv.valuation_date AS broker_valuation_date,
 
-            p.quantity * lp.close_price AS market_value_native,
-            p.quantity * lp.close_price * lp.fx_rate_to_eur AS market_value_eur,
+            COALESCE(
+                p.quantity * lp.close_price,
+                lbv.market_value_eur
+            ) AS market_value_native,
+            COALESCE(
+                p.quantity * lp.close_price * lp.fx_rate_to_eur,
+                lbv.market_value_eur
+            ) AS market_value_eur,
 
             i.invested_eur,
 
-            p.quantity * lp.close_price * lp.fx_rate_to_eur - i.invested_eur AS unrealized_pl_eur,
+            COALESCE(
+                p.quantity * lp.close_price * lp.fx_rate_to_eur,
+                lbv.market_value_eur
+            ) - i.invested_eur AS unrealized_pl_eur,
 
             CASE
                 WHEN i.invested_eur <> 0
-                THEN ((p.quantity * lp.close_price * lp.fx_rate_to_eur - i.invested_eur) / i.invested_eur) * 100
+                THEN (
+                    (
+                        COALESCE(
+                            p.quantity * lp.close_price * lp.fx_rate_to_eur,
+                            lbv.market_value_eur
+                        ) - i.invested_eur
+                    ) / i.invested_eur
+                ) * 100
                 ELSE NULL
-            END AS unrealized_pl_pct
+            END AS unrealized_pl_pct,
+
+            CASE
+                WHEN lp.close_price IS NOT NULL THEN 'market_price'
+                WHEN lbv.market_value_eur IS NOT NULL THEN 'broker_statement'
+                ELSE 'missing'
+            END AS valuation_source
 
         FROM v_positions p
 
         LEFT JOIN latest_prices lp
             ON p.ticker = lp.ticker
+
+        LEFT JOIN latest_broker_valuations lbv
+            ON p.broker_name = lbv.broker_name
+           AND p.ticker = lbv.ticker
 
         LEFT JOIN invested i
             ON p.broker_name = i.broker_name

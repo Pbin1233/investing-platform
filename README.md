@@ -251,10 +251,17 @@ DEGIRO account CSVs:
 python -m app.imports.import_degiro_account "test imports/degiro/Account.csv"
 ```
 
-Both commands default to a dry run. They normalize stock trades, dividends with
-withholding taxes, and cash deposits/withdrawals. Unsupported broker bookkeeping
-rows, such as FX translation adjustments, cash sweep transfers, and stock split
-ledger rows, are reported as ignored rows.
+Intesa investment PDFs and ZIPs can be imported as a folder export:
+
+```bash
+python -m app.imports.import_intesa_statements "path/to/intesa_export_folder"
+```
+
+These commands default to a dry run. IBKR and Degiro normalize stock trades,
+dividends with withholding taxes, and cash deposits/withdrawals. Intesa
+normalizes supported investment-account PDFs into the BTP purchase, coupon tax
+cash flows, and broker-provided position valuations. Unsupported broker
+bookkeeping rows and unrelated documents are reported as ignored rows.
 
 After reviewing the dry run and applying migrations, write new rows with:
 
@@ -262,10 +269,11 @@ After reviewing the dry run and applying migrations, write new rows with:
 python -m app.database.run_migrations
 python -m app.imports.import_ib_statement "path/to/ib_statement.csv" --apply
 python -m app.imports.import_degiro_account "path/to/degiro_account.csv" --apply
+python -m app.imports.import_intesa_statements "path/to/intesa_export_folder" --apply
 ```
 
 Applied imports are tracked in `import_records` using stable source hashes, so
-overlapping future IBKR exports can be imported without duplicating rows.
+overlapping future broker exports can be imported without duplicating rows.
 
 For the normal full-history CSV replacement workflow, use the broker refresh
 command instead of manually deleting rows:
@@ -274,9 +282,10 @@ command instead of manually deleting rows:
 python -m app.imports.refresh_all_brokers
 ```
 
-That command finds the latest CSV in each broker folder under
-`/data/activity imports`, dry-runs every broker, and records each broker refresh
-in `job_runs` for the Operations tab.
+That command finds the latest CSV in each IBKR and Degiro broker folder under
+`/data/activity imports`, uses all supported PDFs/ZIPs under
+`/data/activity imports/intesa`, dry-runs every broker, and records each broker
+refresh in `job_runs` for the Operations tab.
 
 To replace every broker's imported rows after reviewing the dry run:
 
@@ -316,7 +325,17 @@ python -m app.imports.refresh_broker \
   --yes
 ```
 
-Supported broker values are `IB` and `DEGIRO`.
+For Intesa, use the folder as the file argument:
+
+```bash
+python -m app.imports.refresh_broker \
+  --broker INTESA \
+  --file "/data/activity imports/intesa" \
+  --apply \
+  --yes
+```
+
+Supported broker values are `IB`, `DEGIRO`, and `INTESA`.
 
 ---
 

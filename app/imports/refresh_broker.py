@@ -16,6 +16,11 @@ from app.imports.import_ib_statement import (
     import_statement,
     parse_ib_statement,
 )
+from app.imports.import_intesa_statements import (
+    SOURCE_SYSTEM as INTESA_SOURCE_SYSTEM,
+    import_intesa_statements,
+    parse_intesa_statements,
+)
 from app.ops.data_quality import run_all_checks
 from app.ops.job_runs import finish_job, start_job
 
@@ -35,13 +40,27 @@ BROKERS = {
         "source_system": DEGIRO_SOURCE_SYSTEM,
         "parser": parse_degiro_account,
     },
+    "INTESA": {
+        "broker_name": "INTESA",
+        "source_system": INTESA_SOURCE_SYSTEM,
+        "parser": parse_intesa_statements,
+    },
 }
 
 
 def parse_broker_file(broker: str, path: str | Path):
     config = broker_config(broker)
     parser: Callable = config["parser"]
+    if broker.upper() == "INTESA":
+        return parser(path)
     return parser(path, broker_name=config["broker_name"])
+
+
+def import_broker_statement(broker: str, parsed, apply: bool) -> dict:
+    config = broker_config(broker)
+    if broker.upper() == "INTESA":
+        return import_intesa_statements(parsed, apply=apply)
+    return import_statement(parsed, apply=apply, source_system=config["source_system"])
 
 
 def broker_config(broker: str) -> dict:
@@ -97,6 +116,14 @@ def delete_broker_rows(broker_name: str, source_system: str) -> dict:
                             WHERE broker_name = :broker_name
                         )
                    )
+                   OR (
+                        target_table = 'broker_position_valuations'
+                        AND target_id IN (
+                            SELECT valuation_id
+                            FROM broker_position_valuations
+                            WHERE broker_name = :broker_name
+                        )
+                   )
             """),
             {
                 "broker_name": broker_name,
@@ -119,11 +146,17 @@ def delete_broker_rows(broker_name: str, source_system: str) -> dict:
             {"broker_name": broker_name},
         ).rowcount
 
+        valuations_deleted = conn.execute(
+            text("DELETE FROM broker_position_valuations WHERE broker_name = :broker_name"),
+            {"broker_name": broker_name},
+        ).rowcount
+
     return {
         "import_records": import_records_deleted,
         "transactions": transactions_deleted,
         "dividends": dividends_deleted,
         "cash_flows": cash_flows_deleted,
+        "broker_position_valuations": valuations_deleted,
     }
 
 
@@ -205,11 +238,7 @@ def refresh_broker(
     try:
         parsed = parse_broker_file(broker, path)
         report["source_file"] = parsed.source_file
-        report["pre_refresh_dry_run"] = import_statement(
-            parsed,
-            apply=False,
-            source_system=config["source_system"],
-        )
+        report["pre_refresh_dry_run"] = import_broker_statement(broker, parsed, apply=False)
 
         if not apply:
             report["message"] = (
@@ -231,17 +260,9 @@ def refresh_broker(
             source_system=config["source_system"],
         )
 
-        report["apply_summary"] = import_statement(
-            parsed,
-            apply=True,
-            source_system=config["source_system"],
-        )
+        report["apply_summary"] = import_broker_statement(broker, parsed, apply=True)
 
-        report["post_refresh_dry_run"] = import_statement(
-            parsed,
-            apply=False,
-            source_system=config["source_system"],
-        )
+        report["post_refresh_dry_run"] = import_broker_statement(broker, parsed, apply=False)
 
         post = report["post_refresh_dry_run"]
         if post["inserted"] != 0 or post["matched_existing"] != 0:

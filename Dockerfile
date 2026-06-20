@@ -3,7 +3,7 @@ FROM python:3.12-slim
 WORKDIR /workspace
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client gzip \
+    && apt-get install -y --no-install-recommends postgresql-client gzip poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY app/requirements.txt /tmp/requirements.txt

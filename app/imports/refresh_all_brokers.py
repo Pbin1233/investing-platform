@@ -9,6 +9,7 @@ DEFAULT_IMPORT_ROOT = Path("/data/activity imports")
 BROKER_IMPORT_DIRS = {
     "IB": "ib",
     "DEGIRO": "degiro",
+    "INTESA": "intesa",
 }
 
 
@@ -34,6 +35,29 @@ def find_latest_csv(import_root: str | Path, broker: str) -> Path:
     return max(candidates, key=lambda path: (path.stat().st_mtime, path.name))
 
 
+def find_intesa_export(import_root: str | Path) -> Path:
+    broker_dir = Path(import_root) / BROKER_IMPORT_DIRS["INTESA"]
+    if not broker_dir.exists():
+        raise FileNotFoundError(f"No Intesa PDFs or ZIP files found in {broker_dir}")
+
+    candidates = [
+        path
+        for path in broker_dir.rglob("*")
+        if path.is_file() and path.suffix.lower() in {".pdf", ".zip"}
+    ]
+    if not candidates:
+        raise FileNotFoundError(f"No Intesa PDFs or ZIP files found in {broker_dir}")
+
+    return broker_dir
+
+
+def find_broker_input(import_root: str | Path, broker: str) -> Path:
+    broker = broker.upper()
+    if broker == "INTESA":
+        return find_intesa_export(import_root)
+    return find_latest_csv(import_root, broker)
+
+
 def refresh_all_brokers(
     import_root: str | Path = DEFAULT_IMPORT_ROOT,
     brokers: list[str] | None = None,
@@ -54,7 +78,7 @@ def refresh_all_brokers(
         }
 
         try:
-            path = find_latest_csv(import_root, broker)
+            path = find_broker_input(import_root, broker)
             broker_report["file"] = str(path)
             broker_report["refresh"] = refresh_broker(
                 broker=broker,
