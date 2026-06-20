@@ -85,11 +85,16 @@ def check_stale_prices(days: int = 5) -> pd.DataFrame:
     if health.empty:
         return health
 
-    return health[
+    has_broker_valuation = health["latest_broker_valuation_date"].notna()
+    missing_or_stale_market_price = (
         health["missing_latest_price"]
         | health["missing_daily_price"]
         | health["stale_latest_price"]
         | health["stale_daily_price"]
+    ) & ~has_broker_valuation
+
+    return health[
+        missing_or_stale_market_price
         | health["invalid_latest_price"]
         | health["invalid_daily_price"]
         | health["currency_mismatch"]
@@ -102,6 +107,7 @@ def check_stale_prices(days: int = 5) -> pd.DataFrame:
             "latest_price_age_days",
             "latest_daily_price_date",
             "latest_daily_age_days",
+            "latest_broker_valuation_date",
             "status",
             "issues",
         ]

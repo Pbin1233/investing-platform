@@ -26,6 +26,8 @@ HEALTH_COLUMNS = [
     "daily_fx_rate_to_eur",
     "daily_close_price_eur",
     "latest_daily_source",
+    "latest_broker_valuation_date",
+    "latest_broker_market_value_eur",
     "missing_latest_price",
     "missing_daily_price",
     "stale_latest_price",
@@ -188,6 +190,20 @@ def load_market_data_health(engine=None, stale_days: int = 5) -> pd.DataFrame:
                 source AS latest_daily_source
             FROM daily_prices
             ORDER BY ticker, price_date DESC NULLS LAST, id DESC NULLS LAST
+        ),
+        latest_broker_valuations AS (
+            SELECT DISTINCT ON (bpv.broker_name, bpv.ticker)
+                bpv.broker_name,
+                bpv.ticker,
+                bpv.valuation_date AS latest_broker_valuation_date,
+                NULLIF(bpv.market_value_eur::TEXT, 'NaN')::NUMERIC
+                    AS latest_broker_market_value_eur
+            FROM broker_position_valuations bpv
+            JOIN v_positions p
+              ON p.broker_name = bpv.broker_name
+             AND p.ticker = bpv.ticker
+            WHERE p.quantity > 0
+            ORDER BY bpv.broker_name, bpv.ticker, bpv.valuation_date DESC, bpv.valuation_id DESC
         )
         SELECT
             s.ticker,
@@ -206,12 +222,16 @@ def load_market_data_health(engine=None, stale_days: int = 5) -> pd.DataFrame:
             ld.daily_currency,
             ld.daily_fx_rate_to_eur,
             ld.daily_close_price_eur,
-            ld.latest_daily_source
+            ld.latest_daily_source,
+            lbv.latest_broker_valuation_date,
+            lbv.latest_broker_market_value_eur
         FROM securities s
         LEFT JOIN latest_prices lp
           ON lp.ticker = s.ticker
         LEFT JOIN latest_daily ld
           ON ld.ticker = s.ticker
+        LEFT JOIN latest_broker_valuations lbv
+          ON lbv.ticker = s.ticker
         WHERE s.active = TRUE
         ORDER BY s.ticker
     """)
