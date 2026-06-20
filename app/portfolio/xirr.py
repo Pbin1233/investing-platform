@@ -78,6 +78,7 @@ def portfolio_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
     external_flows = pd.read_sql(
         text("""
             SELECT
+                broker_name,
                 flow_date,
                 CASE
                     WHEN flow_type = 'DEPOSIT'
@@ -93,9 +94,12 @@ def portfolio_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
         engine,
     )
 
+    funded_brokers = set(external_flows["broker_name"].dropna().unique())
+
     dividends = pd.read_sql(
         text("""
             SELECT
+                broker_name,
                 payment_date AS flow_date,
                 net_amount * fx_rate_to_eur AS amount_eur,
                 'DIVIDEND' AS source
@@ -103,8 +107,17 @@ def portfolio_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
         """),
         engine,
     )
+    if funded_brokers:
+        dividends = dividends[dividends["broker_name"].isin(funded_brokers)]
+    else:
+        dividends = dividends.iloc[0:0]
 
-    current_value = calculate_portfolio()["market_value_eur"].sum()
+    portfolio = calculate_portfolio()
+    if funded_brokers and not portfolio.empty:
+        portfolio = portfolio[portfolio["broker_name"].isin(funded_brokers)]
+    else:
+        portfolio = portfolio.iloc[0:0]
+    current_value = portfolio["market_value_eur"].sum()
 
     terminal = pd.DataFrame(
         [{
@@ -181,6 +194,7 @@ def broker_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
         """),
         engine,
     )
+    funded_brokers = set(external_flows["broker_name"].dropna().unique())
 
     dividends = pd.read_sql(
         text("""
@@ -193,6 +207,10 @@ def broker_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
         """),
         engine,
     )
+    if funded_brokers:
+        dividends = dividends[dividends["broker_name"].isin(funded_brokers)]
+    else:
+        dividends = dividends.iloc[0:0]
 
     portfolio = calculate_portfolio()
 
@@ -201,6 +219,7 @@ def broker_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
             columns=["broker_name", "flow_date", "amount_eur", "source"]
         )
     else:
+        portfolio = portfolio[portfolio["broker_name"].isin(funded_brokers)]
         terminal = (
             portfolio
             .groupby("broker_name", as_index=False)["market_value_eur"]

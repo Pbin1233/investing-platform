@@ -9,6 +9,7 @@ CAPITAL_GAINS_TAX_RATE = 0.26
 DIVIDEND_TAX_RATE = 0.26
 IVAFE_TAX_RATE = 0.002
 FINAL_WITHHOLDING_TICKERS = ("IT0005532715",)
+TAX_EXEMPT_MARKET_VALUE_TICKERS = FINAL_WITHHOLDING_TICKERS
 
 
 TAX_SUMMARY_COLUMNS = [
@@ -71,9 +72,16 @@ def _year_end_market_values(
     engine,
     years: list[int],
     by_broker: bool = False,
+    tax_exempt_tickers: str = "NULL",
 ) -> pd.DataFrame:
     if not years:
-        columns = ["year", "year_end_market_value_eur", "year_end_unpriced_positions"]
+        columns = [
+            "year",
+            "year_end_market_value_eur",
+            "year_end_taxable_market_value_eur",
+            "year_end_tax_exempt_market_value_eur",
+            "year_end_unpriced_positions",
+        ]
         if by_broker:
             columns.insert(1, "broker_name")
         return pd.DataFrame(columns=columns)
@@ -173,6 +181,14 @@ def _year_end_market_values(
             year,
             {broker_cols}
             COALESCE(SUM(market_value_eur), 0) AS year_end_market_value_eur,
+            COALESCE(SUM(
+                CASE WHEN ticker IN ({tax_exempt_tickers})
+                    THEN 0 ELSE market_value_eur END
+            ), 0) AS year_end_taxable_market_value_eur,
+            COALESCE(SUM(
+                CASE WHEN ticker IN ({tax_exempt_tickers})
+                    THEN market_value_eur ELSE 0 END
+            ), 0) AS year_end_tax_exempt_market_value_eur,
             SUM(CASE WHEN market_value_eur IS NULL THEN 1 ELSE 0 END)::INT
                 AS year_end_unpriced_positions
         FROM valued_positions p
@@ -193,6 +209,10 @@ def _add_tax_estimates(summary: pd.DataFrame) -> pd.DataFrame:
         "creditable_withholding_tax_eur",
         summary["withholding_tax_eur"],
     )
+    ivafe_base = summary.get(
+        "year_end_taxable_market_value_eur",
+        summary["year_end_market_value_eur"],
+    )
 
     summary["taxable_realized_gain_eur"] = (
         summary["realized_gain_eur"].clip(lower=0)
@@ -212,7 +232,7 @@ def _add_tax_estimates(summary: pd.DataFrame) -> pd.DataFrame:
         - summary["dividend_withholding_credit_eur"]
     ).clip(lower=0)
     summary["ivafe_tax_eur"] = (
-        summary["year_end_market_value_eur"] * IVAFE_TAX_RATE
+        ivafe_base * IVAFE_TAX_RATE
     )
     summary["estimated_total_tax_liability_eur"] = (
         summary["capital_gains_tax_eur"]
@@ -295,6 +315,9 @@ def calculate_yearly_summary() -> pd.DataFrame:
     final_withholding_tickers = ", ".join(
         f"'{ticker}'" for ticker in FINAL_WITHHOLDING_TICKERS
     )
+    tax_exempt_market_value_tickers = ", ".join(
+        f"'{ticker}'" for ticker in TAX_EXEMPT_MARKET_VALUE_TICKERS
+    )
 
     cash_flows = pd.read_sql(
         text("""
@@ -353,7 +376,11 @@ def calculate_yearly_summary() -> pd.DataFrame:
     )
 
     summary = pd.DataFrame({"year": years})
-    year_end_values = _year_end_market_values(engine, years)
+    year_end_values = _year_end_market_values(
+        engine,
+        years,
+        tax_exempt_tickers=tax_exempt_market_value_tickers,
+    )
     frames.append(year_end_values)
 
     for df in frames:
@@ -374,6 +401,8 @@ def calculate_yearly_summary() -> pd.DataFrame:
         "realized_cost_basis_eur",
         "realized_gain_eur",
         "year_end_market_value_eur",
+        "year_end_taxable_market_value_eur",
+        "year_end_tax_exempt_market_value_eur",
         "year_end_unpriced_positions",
     ]
 
@@ -393,6 +422,9 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
     engine = get_engine()
     final_withholding_tickers = ", ".join(
         f"'{ticker}'" for ticker in FINAL_WITHHOLDING_TICKERS
+    )
+    tax_exempt_market_value_tickers = ", ".join(
+        f"'{ticker}'" for ticker in TAX_EXEMPT_MARKET_VALUE_TICKERS
     )
 
     cash_flows = pd.read_sql(
@@ -461,6 +493,7 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
         engine,
         sorted(keys["year"].dropna().astype(int).unique()),
         by_broker=True,
+        tax_exempt_tickers=tax_exempt_market_value_tickers,
     )
     frames.append(year_end_values)
 
@@ -482,6 +515,8 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
         "realized_cost_basis_eur",
         "realized_gain_eur",
         "year_end_market_value_eur",
+        "year_end_taxable_market_value_eur",
+        "year_end_tax_exempt_market_value_eur",
         "year_end_unpriced_positions",
     ]
 
