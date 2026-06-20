@@ -46,17 +46,36 @@ st.markdown(
     """
     <style>
     :root {
-        --surface: #ffffff;
-        --surface-muted: #f7f9fc;
-        --border: #d9e2ec;
-        --text-muted: #52616b;
-        --accent: #1f6feb;
+        --surface: var(--background-color, #ffffff);
+        --surface-muted: var(--secondary-background-color, #f7f9fc);
+        --border: color-mix(in srgb, var(--text) 18%, var(--surface));
+        --text: var(--text-color, #102a43);
+        --text-muted: color-mix(in srgb, var(--text) 68%, var(--surface));
+        --accent: var(--primary-color, #1f6feb);
         --good: #1f883d;
         --warn: #b7791f;
+        --header-bg: linear-gradient(180deg, var(--surface) 0%, var(--surface-muted) 100%);
+        --metric-shadow: 0 1px 2px rgba(16, 42, 67, 0.04);
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --surface: #161b22;
+            --surface-muted: #0d1117;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --good: #3fb950;
+            --warn: #d29922;
+            --header-bg: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
+            --metric-shadow: none;
+        }
     }
 
     .stApp {
         background: var(--surface-muted);
+        color: var(--text);
     }
 
     .block-container {
@@ -66,7 +85,7 @@ st.markdown(
     }
 
     .app-header {
-        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        background: var(--header-bg);
         border: 1px solid var(--border);
         border-radius: 8px;
         padding: 1.15rem 1.35rem;
@@ -74,7 +93,7 @@ st.markdown(
     }
 
     .app-title {
-        color: #102a43;
+        color: var(--text);
         font-size: 1.65rem;
         font-weight: 700;
         line-height: 1.15;
@@ -93,7 +112,7 @@ st.markdown(
         border-left: 3px solid var(--accent);
         border-radius: 8px;
         padding: 0.85rem 0.9rem;
-        box-shadow: 0 1px 2px rgba(16, 42, 67, 0.04);
+        box-shadow: var(--metric-shadow);
     }
 
     div[data-testid="stMetric"] label {
@@ -104,7 +123,7 @@ st.markdown(
     }
 
     h1, h2, h3 {
-        color: #102a43;
+        color: var(--text);
         letter-spacing: 0;
     }
 
