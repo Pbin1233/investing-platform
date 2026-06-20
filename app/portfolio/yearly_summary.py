@@ -120,7 +120,11 @@ def _year_end_market_values(
                 p.ticker,
                 p.quantity,
                 latest_price.close_price_eur,
-                p.quantity * latest_price.close_price_eur AS market_value_eur
+                latest_broker_valuation.scaled_market_value_eur,
+                COALESCE(
+                    p.quantity * latest_price.close_price_eur,
+                    latest_broker_valuation.scaled_market_value_eur
+                ) AS market_value_eur
             FROM positions p
             LEFT JOIN LATERAL (
                 SELECT close_price_eur
@@ -148,13 +152,27 @@ def _year_end_market_values(
                 ORDER BY price_date DESC, sort_id DESC
                 LIMIT 1
             ) latest_price ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT
+                    CASE
+                        WHEN bpv.quantity <> 0
+                        THEN bpv.market_value_eur * (p.quantity / bpv.quantity)
+                        ELSE NULL
+                    END AS scaled_market_value_eur
+                FROM broker_position_valuations bpv
+                WHERE bpv.broker_name = p.broker_name
+                  AND bpv.ticker = p.ticker
+                  AND bpv.valuation_date <= p.year_end_date
+                ORDER BY bpv.valuation_date DESC, bpv.valuation_id DESC
+                LIMIT 1
+            ) latest_broker_valuation ON TRUE
         )
 
         SELECT
             year,
             {broker_cols}
             COALESCE(SUM(market_value_eur), 0) AS year_end_market_value_eur,
-            SUM(CASE WHEN close_price_eur IS NULL THEN 1 ELSE 0 END)::INT
+            SUM(CASE WHEN market_value_eur IS NULL THEN 1 ELSE 0 END)::INT
                 AS year_end_unpriced_positions
         FROM valued_positions p
         GROUP BY year{broker_group}
