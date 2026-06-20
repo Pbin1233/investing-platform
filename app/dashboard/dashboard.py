@@ -46,36 +46,11 @@ st.markdown(
     """
     <style>
     :root {
-        --surface: var(--background-color, #ffffff);
-        --surface-muted: var(--secondary-background-color, #f7f9fc);
-        --border: color-mix(in srgb, var(--text) 18%, var(--surface));
-        --text: var(--text-color, #102a43);
-        --text-muted: color-mix(in srgb, var(--text) 68%, var(--surface));
+        --panel-bg: rgba(127, 127, 127, 0.08);
+        --panel-bg-strong: rgba(127, 127, 127, 0.12);
+        --border: rgba(127, 127, 127, 0.28);
         --accent: var(--primary-color, #1f6feb);
-        --good: #1f883d;
-        --warn: #b7791f;
-        --header-bg: linear-gradient(180deg, var(--surface) 0%, var(--surface-muted) 100%);
-        --metric-shadow: 0 1px 2px rgba(16, 42, 67, 0.04);
-    }
-
-    @media (prefers-color-scheme: dark) {
-        :root {
-            --surface: #161b22;
-            --surface-muted: #0d1117;
-            --border: #30363d;
-            --text: #e6edf3;
-            --text-muted: #8b949e;
-            --accent: #58a6ff;
-            --good: #3fb950;
-            --warn: #d29922;
-            --header-bg: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
-            --metric-shadow: none;
-        }
-    }
-
-    .stApp {
-        background: var(--surface-muted);
-        color: var(--text);
+        --metric-shadow: none;
     }
 
     .block-container {
@@ -85,7 +60,7 @@ st.markdown(
     }
 
     .app-header {
-        background: var(--header-bg);
+        background: linear-gradient(180deg, var(--panel-bg-strong) 0%, var(--panel-bg) 100%);
         border: 1px solid var(--border);
         border-radius: 8px;
         padding: 1.15rem 1.35rem;
@@ -93,7 +68,7 @@ st.markdown(
     }
 
     .app-title {
-        color: var(--text);
+        color: inherit;
         font-size: 1.65rem;
         font-weight: 700;
         line-height: 1.15;
@@ -101,13 +76,14 @@ st.markdown(
     }
 
     .app-subtitle {
-        color: var(--text-muted);
+        color: inherit;
         font-size: 0.92rem;
         margin-top: 0.25rem;
+        opacity: 0.72;
     }
 
     div[data-testid="stMetric"] {
-        background: var(--surface);
+        background: var(--panel-bg);
         border: 1px solid var(--border);
         border-left: 3px solid var(--accent);
         border-radius: 8px;
@@ -116,14 +92,15 @@ st.markdown(
     }
 
     div[data-testid="stMetric"] label {
-        color: var(--text-muted) !important;
+        color: inherit !important;
         font-size: 0.78rem !important;
         font-weight: 600 !important;
         letter-spacing: 0 !important;
+        opacity: 0.72;
     }
 
     h1, h2, h3 {
-        color: var(--text);
+        color: inherit;
         letter-spacing: 0;
     }
 
@@ -141,7 +118,7 @@ st.markdown(
         border: 1px solid var(--border);
         border-radius: 8px;
         overflow: hidden;
-        background: var(--surface);
+        background: transparent;
     }
 
     div[data-testid="stTabs"] button {
