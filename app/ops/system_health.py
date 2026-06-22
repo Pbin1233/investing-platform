@@ -123,7 +123,11 @@ def build_system_health_rows(
         }
     )
 
-    for broker_job in ("broker_refresh_DEGIRO", "broker_refresh_IB"):
+    for broker_job in (
+        "broker_refresh_DEGIRO",
+        "broker_refresh_IB",
+        "broker_refresh_INTESA",
+    ):
         status, detail = _job_status(latest_jobs, broker_job)
         rows.append(
             {

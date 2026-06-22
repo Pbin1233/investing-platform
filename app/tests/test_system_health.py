@@ -59,6 +59,12 @@ def test_build_system_health_rows_summarizes_ok_state():
                 "started_at": "2026-06-18 12:01",
                 "age_hours": 21.0,
             },
+            {
+                "job_name": "broker_refresh_INTESA",
+                "status": "success",
+                "started_at": "2026-06-18 12:02",
+                "age_hours": 21.0,
+            },
         ]
     )
     market_health = pd.DataFrame(
@@ -118,4 +124,5 @@ def test_build_system_health_rows_flags_issues():
     assert statuses["Daily maintenance"] == "CHECK"
     assert statuses["Market data"] == "CHECK"
     assert statuses["Data quality"] == "CHECK"
+    assert statuses["broker_refresh_INTESA"] == "MISSING"
     assert statuses["Latest backup"] == "CHECK"

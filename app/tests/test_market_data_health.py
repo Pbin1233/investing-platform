@@ -71,6 +71,38 @@ def test_market_data_health_marks_missing_without_invalid_noise():
     assert row["issues"] == "missing latest"
 
 
+def test_market_data_health_accepts_broker_statement_valuation_without_quotes():
+    df = pd.DataFrame([
+        _base_row(
+            ticker="IT0005532715",
+            latest_price_date=None,
+            latest_close_price=None,
+            latest_currency=None,
+            latest_fx_rate_to_eur=None,
+            latest_close_price_eur=None,
+            latest_daily_price_date=None,
+            daily_close_price=None,
+            daily_currency=None,
+            daily_fx_rate_to_eur=None,
+            daily_close_price_eur=None,
+            latest_broker_valuation_date=date(2026, 3, 31),
+            latest_broker_market_value_eur=25696.76,
+        )
+    ])
+
+    result = annotate_market_data_health(
+        df,
+        today=date(2026, 6, 22),
+        stale_days=5,
+    )
+    row = result.iloc[0]
+
+    assert row["status"] == "OK"
+    assert row["issues"] == ""
+    assert bool(row["missing_latest_price"]) is False
+    assert bool(row["missing_daily_price"]) is False
+
+
 def test_market_data_health_marks_stale_daily_and_latest_prices():
     df = pd.DataFrame([
         _base_row(

@@ -61,7 +61,15 @@ def annotate_market_data_health(
 
     result = df.copy()
 
-    for column in ("latest_price_date", "latest_daily_price_date"):
+    for column in ("latest_broker_valuation_date", "latest_broker_market_value_eur"):
+        if column not in result.columns:
+            result[column] = pd.NA
+
+    for column in (
+        "latest_price_date",
+        "latest_daily_price_date",
+        "latest_broker_valuation_date",
+    ):
         if column in result.columns:
             result[column] = _coerce_date(result[column])
 
@@ -72,6 +80,7 @@ def annotate_market_data_health(
         "daily_close_price",
         "daily_fx_rate_to_eur",
         "daily_close_price_eur",
+        "latest_broker_market_value_eur",
     ]
     for column in numeric_columns:
         if column in result.columns:
@@ -84,8 +93,18 @@ def annotate_market_data_health(
         lambda value: (today - value).days if pd.notna(value) else pd.NA
     )
 
-    result["missing_latest_price"] = result["latest_price_date"].isna()
-    result["missing_daily_price"] = result["latest_daily_price_date"].isna()
+    has_broker_valuation = (
+        result["latest_broker_valuation_date"].notna()
+        & result["latest_broker_market_value_eur"].notna()
+        & result["latest_broker_market_value_eur"].gt(0).fillna(False)
+    )
+
+    result["missing_latest_price"] = (
+        result["latest_price_date"].isna() & ~has_broker_valuation
+    )
+    result["missing_daily_price"] = (
+        result["latest_daily_price_date"].isna() & ~has_broker_valuation
+    )
 
     result["stale_latest_price"] = (
         ~result["missing_latest_price"]
@@ -97,7 +116,7 @@ def annotate_market_data_health(
     )
 
     result["invalid_latest_price"] = (
-        ~result["missing_latest_price"]
+        result["latest_price_date"].notna()
         & (
             result["latest_close_price"].isna()
             | result["latest_fx_rate_to_eur"].isna()
@@ -106,7 +125,7 @@ def annotate_market_data_health(
         )
     )
     result["invalid_daily_price"] = (
-        ~result["missing_daily_price"]
+        result["latest_daily_price_date"].notna()
         & (
             result["daily_close_price"].isna()
             | result["daily_fx_rate_to_eur"].isna()
@@ -121,8 +140,8 @@ def annotate_market_data_health(
     daily_currency = result["daily_currency"].fillna("")
     quote_currency = result["quote_currency"].fillna("")
     result["currency_mismatch"] = (
-        (~result["missing_latest_price"] & latest_currency.ne(quote_currency))
-        | (~result["missing_daily_price"] & daily_currency.ne(quote_currency))
+        (result["latest_price_date"].notna() & latest_currency.ne(quote_currency))
+        | (result["latest_daily_price_date"].notna() & daily_currency.ne(quote_currency))
     )
 
     def issue_labels(row: pd.Series) -> list[str]:
