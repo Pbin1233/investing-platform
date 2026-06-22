@@ -66,7 +66,7 @@ def test_add_tax_estimates_excludes_final_withholding_income_from_dividend_tax()
                 "withholding_tax_eur": 109.78,
                 "creditable_withholding_tax_eur": 0.0,
                 "final_withholding_income_eur": 878.24,
-                "final_withholding_tax_eur": 109.78,
+                "final_withholding_tax_eur": 0.0,
                 "realized_gain_eur": 0.0,
                 "year_end_market_value_eur": 25_402.78,
             }

@@ -352,10 +352,7 @@ def calculate_yearly_summary() -> pd.DataFrame:
                     CASE WHEN ticker IN ({final_withholding_tickers})
                         THEN gross_amount * fx_rate_to_eur ELSE 0 END
                 ) AS final_withholding_income_eur,
-                SUM(
-                    CASE WHEN ticker IN ({final_withholding_tickers})
-                        THEN withholding_tax * fx_rate_to_eur ELSE 0 END
-                ) AS final_withholding_tax_eur
+                0::NUMERIC AS final_withholding_tax_eur
             FROM dividends
             GROUP BY year
         """),
@@ -460,10 +457,7 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
                     CASE WHEN ticker IN ({final_withholding_tickers})
                         THEN gross_amount * fx_rate_to_eur ELSE 0 END
                 ) AS final_withholding_income_eur,
-                SUM(
-                    CASE WHEN ticker IN ({final_withholding_tickers})
-                        THEN withholding_tax * fx_rate_to_eur ELSE 0 END
-                ) AS final_withholding_tax_eur
+                0::NUMERIC AS final_withholding_tax_eur
             FROM dividends
             GROUP BY year, broker_name
         """),

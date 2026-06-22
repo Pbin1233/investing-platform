@@ -508,7 +508,7 @@ with holdings_tab:
             holdings
             .sort_values("market_value_eur", ascending=False)
             .head(10)
-            .set_index("ticker")[["market_value_eur", "invested_eur"]]
+            .set_index("ticker")[["market_value_eur"]]
         )
         st.bar_chart(top_holdings_chart)
 
@@ -772,11 +772,11 @@ with income_tab:
                         },
                         {
                             "assumption": "Dividend withholding credit",
-                            "value": "Capped at computed dividend tax for each year or broker row",
+                            "value": "Applies only to ordinary taxable dividends; Intesa BTP withholding is excluded from estimated tax due",
                         },
                         {
                             "assumption": "Year-end market value",
-                            "value": "Position quantity at Dec 31 times latest stored price on or before Dec 31",
+                            "value": "Position quantity at Dec 31 times latest stored price or broker statement valuation on or before Dec 31",
                         },
                         {
                             "assumption": "Unpriced positions",
@@ -998,7 +998,7 @@ with activity_tab:
     activity_cols = st.columns(4)
     activity_cols[0].metric("Transactions Loaded", int(snapshot["trade_count"]))
     activity_cols[1].metric("Latest Trade", snapshot["latest_trade"])
-    activity_cols[2].metric("Net Cash Flow EUR", money(snapshot["net_flow_eur"]))
+    activity_cols[2].metric("External Net Flow EUR", money(snapshot["net_flow_eur"]))
     activity_cols[3].metric("Latest Import", snapshot["latest_import"])
     st.caption(f"Latest import file: {snapshot['latest_import_file']}")
 
@@ -1060,7 +1060,7 @@ with activity_tab:
         flow_col1, flow_col2, flow_col3 = st.columns(3)
         flow_col1.metric("Deposits", money(flow_totals.get("DEPOSIT", 0)))
         flow_col2.metric("Withdrawals", money(flow_totals.get("WITHDRAWAL", 0)))
-        flow_col3.metric("Net Flow", money(cash_flow_filtered["amount_eur"].sum()))
+        flow_col3.metric("External Net Flow", money(cash_flow_filtered["amount_eur"].sum()))
         display_table(cash_flow_filtered.head(15), width="stretch", hide_index=True)
         if len(cash_flow_filtered) > 15:
             display_table_expander("All filtered cash flows", cash_flow_filtered)
@@ -1140,6 +1140,41 @@ with market_tab:
     """)
 
     display_table_expander("Latest price details", latest_prices)
+
+    st.subheader("Broker Statement Valuations")
+    broker_valuations = read_sql("""
+        SELECT
+            valuation_date,
+            broker_name,
+            ticker,
+            asset_name,
+            quantity,
+            market_value_eur,
+            currency,
+            source_file
+        FROM broker_position_valuations
+        ORDER BY valuation_date DESC, broker_name, ticker
+    """)
+
+    if broker_valuations.empty:
+        st.info("No broker statement valuations imported yet.")
+    else:
+        valuation_chart = (
+            broker_valuations
+            .sort_values("valuation_date")
+            .assign(valuation_date=lambda df: pd.to_datetime(df["valuation_date"]))
+            .pivot_table(
+                index="valuation_date",
+                columns="ticker",
+                values="market_value_eur",
+                aggfunc="last",
+            )
+        )
+        st.line_chart(valuation_chart)
+        display_table_expander(
+            "Broker statement valuation details",
+            broker_valuations,
+        )
 
     st.subheader("Historical Price Analytics")
     price_analytics = calculate_price_analytics()
