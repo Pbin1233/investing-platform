@@ -37,6 +37,24 @@ def _fake_read_sql(query, engine):
             ]
         )
 
+    if "FROM transactions" in sql:
+        return pd.DataFrame(
+            [
+                {
+                    "broker_name": "IB",
+                    "flow_date": date(2026, 1, 2),
+                    "amount_eur": -900.0,
+                    "source": "BUY",
+                },
+                {
+                    "broker_name": "INTESA",
+                    "flow_date": date(2026, 1, 3),
+                    "amount_eur": -25000.0,
+                    "source": "BUY",
+                },
+            ]
+        )
+
     raise AssertionError(f"Unexpected query: {sql}")
 
 
@@ -57,23 +75,39 @@ def _fake_portfolio():
     )
 
 
-def test_portfolio_xirr_flows_exclude_brokers_without_external_cash_history(monkeypatch):
+def test_portfolio_xirr_flows_include_statement_funded_brokers(monkeypatch):
     monkeypatch.setattr(xirr, "get_engine", lambda: object())
     monkeypatch.setattr(xirr.pd, "read_sql", _fake_read_sql)
     monkeypatch.setattr(xirr, "calculate_portfolio", _fake_portfolio)
 
     flows = xirr.portfolio_cash_flows(as_of_date=date(2026, 6, 20))
 
-    assert flows["amount_eur"].tolist() == [-1000.0, 10.0, 1100.0]
-    assert "INTESA" not in set(flows["broker_name"].dropna())
+    assert flows["amount_eur"].tolist() == [
+        -1000.0,
+        -25000.0,
+        10.0,
+        50.0,
+        26100.0,
+    ]
+    assert "INTESA" in set(flows["broker_name"].dropna())
+    assert -900.0 not in flows["amount_eur"].tolist()
 
 
-def test_broker_xirr_flows_exclude_unfunded_broker_terminal_values(monkeypatch):
+def test_broker_xirr_flows_include_statement_funded_brokers(monkeypatch):
     monkeypatch.setattr(xirr, "get_engine", lambda: object())
     monkeypatch.setattr(xirr.pd, "read_sql", _fake_read_sql)
     monkeypatch.setattr(xirr, "calculate_portfolio", _fake_portfolio)
 
     flows = xirr.broker_cash_flows(as_of_date=date(2026, 6, 20))
 
-    assert set(flows["broker_name"]) == {"IB"}
-    assert flows["amount_eur"].tolist() == [-1000.0, 10.0, 1100.0]
+    assert set(flows["broker_name"]) == {"IB", "INTESA"}
+    assert flows[flows["broker_name"] == "IB"]["amount_eur"].tolist() == [
+        -1000.0,
+        10.0,
+        1100.0,
+    ]
+    assert flows[flows["broker_name"] == "INTESA"]["amount_eur"].tolist() == [
+        -25000.0,
+        50.0,
+        25000.0,
+    ]

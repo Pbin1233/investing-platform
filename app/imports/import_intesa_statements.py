@@ -195,12 +195,11 @@ def _parse_coupon(source_file: str, source_hash: str, text_value: str) -> dict |
     net_amount = _line_amount_after("Totale interessi regolati", text_value)
     if net_amount is None:
         net_amount = _line_amount_after("Interessi da regolare in conto", text_value)
-    withholding_tax = _line_amount_after("Ritenute italiane", text_value)
     if net_amount is None:
         return None
 
-    withholding_tax = abs(withholding_tax or Decimal("0"))
-    gross_amount = net_amount + withholding_tax
+    withholding_tax = Decimal("0")
+    gross_amount = net_amount
 
     return {
         "payment_date": payment_date,

@@ -50,7 +50,9 @@ def benchmark_xirr(
     portfolio_result = calculate_portfolio_xirr(as_of_date=as_of_date)
     flows = portfolio_cash_flows(as_of_date=as_of_date)
 
-    invest_flows = flows[flows["source"].isin(["DEPOSIT", "WITHDRAWAL"])].copy()
+    invest_flows = flows[
+        flows["source"].isin(["DEPOSIT", "WITHDRAWAL", "BUY", "SELL"])
+    ].copy()
 
     units = 0.0
     benchmark_cash_flows = []
@@ -61,25 +63,25 @@ def benchmark_xirr(
 
         benchmark_price_eur = benchmark_price_usd * usd_to_eur
 
-        if row.source == "DEPOSIT":
+        if row.source in {"DEPOSIT", "BUY"}:
             invested_eur = -row.amount_eur
             units += invested_eur / benchmark_price_eur
             benchmark_cash_flows.append(
                 {
                     "flow_date": row.flow_date,
                     "amount_eur": row.amount_eur,
-                    "source": "DEPOSIT",
+                    "source": row.source,
                 }
             )
 
-        elif row.source == "WITHDRAWAL":
+        elif row.source in {"WITHDRAWAL", "SELL"}:
             withdrawn_eur = row.amount_eur
             units -= withdrawn_eur / benchmark_price_eur
             benchmark_cash_flows.append(
                 {
                     "flow_date": row.flow_date,
                     "amount_eur": row.amount_eur,
-                    "source": "WITHDRAWAL",
+                    "source": row.source,
                 }
             )
 

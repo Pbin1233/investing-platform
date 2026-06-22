@@ -693,6 +693,11 @@ with income_tab:
 
         tax_columns = [
             "year",
+            "deposits_eur",
+            "withdrawals_eur",
+            "net_external_cash_flow_eur",
+            "statement_investment_flow_eur",
+            "total_investment_flow_eur",
             "realized_proceeds_eur",
             "realized_cost_basis_eur",
             "realized_gain_eur",
@@ -726,6 +731,11 @@ with income_tab:
             broker_tax_columns = [
                 "year",
                 "broker_name",
+                "deposits_eur",
+                "withdrawals_eur",
+                "net_external_cash_flow_eur",
+                "statement_investment_flow_eur",
+                "total_investment_flow_eur",
                 "realized_proceeds_eur",
                 "realized_cost_basis_eur",
                 "realized_gain_eur",
@@ -995,11 +1005,15 @@ with activity_tab:
 
     st.subheader("Activity Snapshot")
     snapshot = build_activity_snapshot(transactions, cash_flows, import_records)
-    activity_cols = st.columns(4)
+    activity_cols = st.columns(5)
     activity_cols[0].metric("Transactions Loaded", int(snapshot["trade_count"]))
     activity_cols[1].metric("Latest Trade", snapshot["latest_trade"])
     activity_cols[2].metric("External Net Flow EUR", money(snapshot["net_flow_eur"]))
-    activity_cols[3].metric("Latest Import", snapshot["latest_import"])
+    activity_cols[3].metric(
+        "Investment Flow EUR",
+        money(snapshot["investment_flow_eur"]),
+    )
+    activity_cols[4].metric("Latest Import", snapshot["latest_import"])
     st.caption(f"Latest import file: {snapshot['latest_import_file']}")
 
     monthly_activity = build_monthly_activity(
@@ -1013,8 +1027,12 @@ with activity_tab:
         st.subheader("Monthly Activity")
         monthly_chart = monthly_activity.sort_values("month").set_index("month")
         st.bar_chart(monthly_chart[["transactions", "cash_flows", "imported_rows"]])
-        if "net_flow_eur" in monthly_chart.columns:
-            st.bar_chart(monthly_chart[["net_flow_eur"]])
+        flow_columns = [
+            column for column in ["net_flow_eur", "investment_flow_eur"]
+            if column in monthly_chart.columns
+        ]
+        if flow_columns:
+            st.bar_chart(monthly_chart[flow_columns])
         display_table(monthly_activity, width="stretch", hide_index=True)
 
     st.subheader("Transactions")

@@ -69,13 +69,8 @@ def annualized_return(cash_flows: pd.DataFrame) -> float | None:
         return None
 
 
-def portfolio_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
-    if as_of_date is None:
-        as_of_date = date.today()
-
-    engine = get_engine()
-
-    external_flows = pd.read_sql(
+def _external_cash_flows(engine) -> pd.DataFrame:
+    return pd.read_sql(
         text("""
             SELECT
                 broker_name,
@@ -94,7 +89,47 @@ def portfolio_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
         engine,
     )
 
+
+def _statement_funded_trade_flows(
+    engine,
+    funded_brokers: set[str],
+) -> pd.DataFrame:
+    trade_flows = pd.read_sql(
+        text("""
+            SELECT
+                broker_name,
+                trade_date AS flow_date,
+                CASE
+                    WHEN action = 'BUY'
+                    THEN -(quantity * price + fees) * fx_rate_to_eur
+                    WHEN action = 'SELL'
+                    THEN (quantity * price - fees) * fx_rate_to_eur
+                    ELSE 0
+                END AS amount_eur,
+                action AS source
+            FROM transactions
+            WHERE action IN ('BUY', 'SELL')
+        """),
+        engine,
+    )
+
+    if trade_flows.empty or not funded_brokers:
+        return trade_flows
+
+    return trade_flows[~trade_flows["broker_name"].isin(funded_brokers)]
+
+
+def portfolio_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
+    if as_of_date is None:
+        as_of_date = date.today()
+
+    engine = get_engine()
+
+    external_flows = _external_cash_flows(engine)
     funded_brokers = set(external_flows["broker_name"].dropna().unique())
+    statement_flows = _statement_funded_trade_flows(engine, funded_brokers)
+    statement_brokers = set(statement_flows["broker_name"].dropna().unique())
+    included_brokers = funded_brokers | statement_brokers
 
     dividends = pd.read_sql(
         text("""
@@ -107,14 +142,14 @@ def portfolio_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
         """),
         engine,
     )
-    if funded_brokers:
-        dividends = dividends[dividends["broker_name"].isin(funded_brokers)]
+    if included_brokers:
+        dividends = dividends[dividends["broker_name"].isin(included_brokers)]
     else:
         dividends = dividends.iloc[0:0]
 
     portfolio = calculate_portfolio()
-    if funded_brokers and not portfolio.empty:
-        portfolio = portfolio[portfolio["broker_name"].isin(funded_brokers)]
+    if included_brokers and not portfolio.empty:
+        portfolio = portfolio[portfolio["broker_name"].isin(included_brokers)]
     else:
         portfolio = portfolio.iloc[0:0]
     current_value = portfolio["market_value_eur"].sum()
@@ -128,7 +163,7 @@ def portfolio_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
     )
 
     flows = pd.concat(
-        [external_flows, dividends, terminal],
+        [external_flows, statement_flows, dividends, terminal],
         ignore_index=True,
     )
 
@@ -176,25 +211,11 @@ def broker_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
 
     engine = get_engine()
 
-    external_flows = pd.read_sql(
-        text("""
-            SELECT
-                broker_name,
-                flow_date,
-                CASE
-                    WHEN flow_type = 'DEPOSIT'
-                    THEN -amount * fx_rate_to_eur
-                    WHEN flow_type = 'WITHDRAWAL'
-                    THEN amount * fx_rate_to_eur
-                    ELSE 0
-                END AS amount_eur,
-                flow_type AS source
-            FROM cash_flows
-            WHERE flow_type IN ('DEPOSIT', 'WITHDRAWAL')
-        """),
-        engine,
-    )
+    external_flows = _external_cash_flows(engine)
     funded_brokers = set(external_flows["broker_name"].dropna().unique())
+    statement_flows = _statement_funded_trade_flows(engine, funded_brokers)
+    statement_brokers = set(statement_flows["broker_name"].dropna().unique())
+    included_brokers = funded_brokers | statement_brokers
 
     dividends = pd.read_sql(
         text("""
@@ -207,8 +228,8 @@ def broker_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
         """),
         engine,
     )
-    if funded_brokers:
-        dividends = dividends[dividends["broker_name"].isin(funded_brokers)]
+    if included_brokers:
+        dividends = dividends[dividends["broker_name"].isin(included_brokers)]
     else:
         dividends = dividends.iloc[0:0]
 
@@ -219,7 +240,7 @@ def broker_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
             columns=["broker_name", "flow_date", "amount_eur", "source"]
         )
     else:
-        portfolio = portfolio[portfolio["broker_name"].isin(funded_brokers)]
+        portfolio = portfolio[portfolio["broker_name"].isin(included_brokers)]
         terminal = (
             portfolio
             .groupby("broker_name", as_index=False)["market_value_eur"]
@@ -230,7 +251,7 @@ def broker_cash_flows(as_of_date: date | None = None) -> pd.DataFrame:
         terminal["source"] = "CURRENT_VALUE"
 
     flows = pd.concat(
-        [external_flows, dividends, terminal],
+        [external_flows, statement_flows, dividends, terminal],
         ignore_index=True,
     )
 

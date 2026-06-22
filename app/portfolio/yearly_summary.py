@@ -333,12 +333,41 @@ def calculate_yearly_summary() -> pd.DataFrame:
         engine,
     )
 
+    statement_investment_flows = pd.read_sql(
+        text("""
+            SELECT
+                EXTRACT(YEAR FROM trade_date)::INT AS year,
+                SUM(
+                    CASE
+                        WHEN action = 'BUY'
+                        THEN (quantity * price + fees) * fx_rate_to_eur
+                        WHEN action = 'SELL'
+                        THEN -(quantity * price - fees) * fx_rate_to_eur
+                        ELSE 0
+                    END
+                ) AS statement_investment_flow_eur
+            FROM transactions AS transaction_rows
+            WHERE action IN ('BUY', 'SELL')
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM cash_flows
+                  WHERE cash_flows.broker_name = transaction_rows.broker_name
+                    AND cash_flows.flow_type IN ('DEPOSIT', 'WITHDRAWAL')
+              )
+            GROUP BY year
+        """),
+        engine,
+    )
+
     dividends = pd.read_sql(
         text(f"""
             SELECT
                 EXTRACT(YEAR FROM payment_date)::INT AS year,
                 SUM(gross_amount * fx_rate_to_eur) AS gross_dividends_eur,
-                SUM(withholding_tax * fx_rate_to_eur) AS withholding_tax_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN 0 ELSE withholding_tax * fx_rate_to_eur END
+                ) AS withholding_tax_eur,
                 SUM(net_amount * fx_rate_to_eur) AS net_dividends_eur,
                 SUM(
                     CASE WHEN ticker IN ({final_withholding_tickers})
@@ -363,7 +392,7 @@ def calculate_yearly_summary() -> pd.DataFrame:
 
     realized = _summarize_realized_gains(gains)
 
-    frames = [cash_flows, dividends, realized]
+    frames = [cash_flows, statement_investment_flows, dividends, realized]
     years = sorted(
         set().union(*[
             set(df["year"].dropna().astype(int))
@@ -387,6 +416,7 @@ def calculate_yearly_summary() -> pd.DataFrame:
     numeric_cols = [
         "deposits_eur",
         "withdrawals_eur",
+        "statement_investment_flow_eur",
         "gross_dividends_eur",
         "withholding_tax_eur",
         "net_dividends_eur",
@@ -410,6 +440,10 @@ def calculate_yearly_summary() -> pd.DataFrame:
 
     summary["net_external_cash_flow_eur"] = (
         summary["deposits_eur"] - summary["withdrawals_eur"]
+    )
+    summary["total_investment_flow_eur"] = (
+        summary["net_external_cash_flow_eur"]
+        + summary["statement_investment_flow_eur"]
     )
     summary = _add_tax_estimates(summary)
 
@@ -437,13 +471,43 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
         engine,
     )
 
+    statement_investment_flows = pd.read_sql(
+        text("""
+            SELECT
+                EXTRACT(YEAR FROM trade_date)::INT AS year,
+                broker_name,
+                SUM(
+                    CASE
+                        WHEN action = 'BUY'
+                        THEN (quantity * price + fees) * fx_rate_to_eur
+                        WHEN action = 'SELL'
+                        THEN -(quantity * price - fees) * fx_rate_to_eur
+                        ELSE 0
+                    END
+                ) AS statement_investment_flow_eur
+            FROM transactions AS transaction_rows
+            WHERE action IN ('BUY', 'SELL')
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM cash_flows
+                  WHERE cash_flows.broker_name = transaction_rows.broker_name
+                    AND cash_flows.flow_type IN ('DEPOSIT', 'WITHDRAWAL')
+              )
+            GROUP BY year, broker_name
+        """),
+        engine,
+    )
+
     dividends = pd.read_sql(
         text(f"""
             SELECT
                 EXTRACT(YEAR FROM payment_date)::INT AS year,
                 broker_name,
                 SUM(gross_amount * fx_rate_to_eur) AS gross_dividends_eur,
-                SUM(withholding_tax * fx_rate_to_eur) AS withholding_tax_eur,
+                SUM(
+                    CASE WHEN ticker IN ({final_withholding_tickers})
+                        THEN 0 ELSE withholding_tax * fx_rate_to_eur END
+                ) AS withholding_tax_eur,
                 SUM(net_amount * fx_rate_to_eur) AS net_dividends_eur,
                 SUM(
                     CASE WHEN ticker IN ({final_withholding_tickers})
@@ -468,7 +532,7 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
 
     realized = _summarize_realized_gains(gains, by_broker=True)
 
-    frames = [cash_flows, dividends, realized]
+    frames = [cash_flows, statement_investment_flows, dividends, realized]
 
     keys = pd.concat(
         [
@@ -498,6 +562,7 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
     numeric_cols = [
         "deposits_eur",
         "withdrawals_eur",
+        "statement_investment_flow_eur",
         "gross_dividends_eur",
         "withholding_tax_eur",
         "net_dividends_eur",
@@ -522,6 +587,10 @@ def calculate_yearly_summary_by_broker() -> pd.DataFrame:
 
     summary["net_external_cash_flow_eur"] = (
         summary["deposits_eur"] - summary["withdrawals_eur"]
+    )
+    summary["total_investment_flow_eur"] = (
+        summary["net_external_cash_flow_eur"]
+        + summary["statement_investment_flow_eur"]
     )
     summary = _add_tax_estimates(summary)
 

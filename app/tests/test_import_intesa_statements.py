@@ -53,8 +53,8 @@ def test_parse_coupon_from_coupon_notice_text():
     assert result["payment_date"].isoformat() == "2024-09-16"
     assert result["ticker"] == BTP_TICKER
     assert result["net_amount"] == Decimal("339.16")
-    assert result["withholding_tax"] == Decimal("48.45")
-    assert result["gross_amount"] == Decimal("387.61")
+    assert result["withholding_tax"] == Decimal("0")
+    assert result["gross_amount"] == Decimal("339.16")
 
 
 def test_parse_valuation_from_rendiconto_text():

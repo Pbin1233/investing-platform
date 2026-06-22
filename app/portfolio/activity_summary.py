@@ -29,6 +29,49 @@ def _with_month(df: pd.DataFrame, date_column: str) -> pd.DataFrame:
     return df
 
 
+def _statement_investment_flows(
+    transactions: pd.DataFrame,
+    cash_flows: pd.DataFrame,
+) -> pd.DataFrame:
+    required = {
+        "trade_date",
+        "broker_name",
+        "action",
+        "quantity",
+        "price",
+        "fees",
+        "fx_rate_to_eur",
+    }
+    if transactions.empty or not required.issubset(transactions.columns):
+        return pd.DataFrame(columns=["flow_date", "amount_eur"])
+
+    funded_brokers: set[str] = set()
+    if not cash_flows.empty and "broker_name" in cash_flows.columns:
+        funded_brokers = set(cash_flows["broker_name"].dropna().unique())
+
+    trades = transactions[transactions["action"].isin(["BUY", "SELL"])].copy()
+    if funded_brokers:
+        trades = trades[~trades["broker_name"].isin(funded_brokers)]
+    if trades.empty:
+        return pd.DataFrame(columns=["flow_date", "amount_eur"])
+
+    for column in ["quantity", "price", "fees", "fx_rate_to_eur"]:
+        trades[column] = pd.to_numeric(trades[column], errors="coerce").fillna(0)
+
+    buy_amount = (
+        (trades["quantity"] * trades["price"] + trades["fees"])
+        * trades["fx_rate_to_eur"]
+    )
+    sell_amount = -(
+        (trades["quantity"] * trades["price"] - trades["fees"])
+        * trades["fx_rate_to_eur"]
+    )
+    trades["amount_eur"] = buy_amount.where(trades["action"] == "BUY", sell_amount)
+    trades["flow_date"] = trades["trade_date"]
+
+    return trades[["flow_date", "amount_eur"]]
+
+
 def build_activity_snapshot(
     transactions: pd.DataFrame,
     cash_flows: pd.DataFrame,
@@ -48,6 +91,13 @@ def build_activity_snapshot(
             net_flow_eur = float(pd.to_numeric(cash_flows["amount_eur"]).sum())
         if "flow_date" in cash_flows.columns:
             latest_flow = _date_label(_to_datetime(cash_flows["flow_date"]).max())
+    statement_flows = _statement_investment_flows(transactions, cash_flows)
+    statement_investment_flow_eur = 0.0
+    if not statement_flows.empty:
+        statement_investment_flow_eur = float(
+            pd.to_numeric(statement_flows["amount_eur"]).sum()
+        )
+    investment_flow_eur = net_flow_eur + statement_investment_flow_eur
 
     latest_import = "n/a"
     latest_import_file = "n/a"
@@ -63,6 +113,8 @@ def build_activity_snapshot(
         "trade_count": trade_count,
         "latest_trade": latest_trade,
         "net_flow_eur": net_flow_eur,
+        "statement_investment_flow_eur": statement_investment_flow_eur,
+        "investment_flow_eur": investment_flow_eur,
         "latest_flow": latest_flow,
         "latest_import": latest_import,
         "latest_import_file": latest_import_file,
@@ -99,6 +151,15 @@ def build_monthly_activity(
             )
             frames.append(grouped)
 
+    statement_flows = _statement_investment_flows(transactions, cash_flows)
+    if not statement_flows.empty and "flow_date" in statement_flows.columns:
+        investment_flows = _with_month(statement_flows, "flow_date")
+        if not investment_flows.empty:
+            grouped = investment_flows.groupby("month").agg(
+                statement_investment_flow_eur=("amount_eur", "sum"),
+            )
+            frames.append(grouped)
+
     if not import_records.empty and "imported_at" in import_records.columns:
         imports = _with_month(import_records, "imported_at")
         if not imports.empty:
@@ -118,6 +179,8 @@ def build_monthly_activity(
                 "splits",
                 "cash_flows",
                 "net_flow_eur",
+                "statement_investment_flow_eur",
+                "investment_flow_eur",
                 "imported_rows",
                 "import_files",
             ]
@@ -139,5 +202,16 @@ def build_monthly_activity(
 
     if "net_flow_eur" in monthly.columns:
         monthly["net_flow_eur"] = pd.to_numeric(monthly["net_flow_eur"])
+    if "statement_investment_flow_eur" in monthly.columns:
+        monthly["statement_investment_flow_eur"] = pd.to_numeric(
+            monthly["statement_investment_flow_eur"]
+        )
+    else:
+        monthly["statement_investment_flow_eur"] = 0.0
+    if "net_flow_eur" not in monthly.columns:
+        monthly["net_flow_eur"] = 0.0
+    monthly["investment_flow_eur"] = (
+        monthly["net_flow_eur"] + monthly["statement_investment_flow_eur"]
+    )
 
     return monthly.sort_values("month", ascending=False).head(limit)
