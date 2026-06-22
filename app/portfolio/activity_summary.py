@@ -72,6 +72,18 @@ def _statement_investment_flows(
     return trades[["flow_date", "amount_eur"]]
 
 
+def _external_investment_cash_flows(cash_flows: pd.DataFrame) -> pd.DataFrame:
+    if cash_flows.empty:
+        return cash_flows
+
+    if "flow_type" not in cash_flows.columns:
+        return cash_flows
+
+    return cash_flows[
+        cash_flows["flow_type"].isin(["DEPOSIT", "WITHDRAWAL"])
+    ].copy()
+
+
 def build_activity_snapshot(
     transactions: pd.DataFrame,
     cash_flows: pd.DataFrame,
@@ -87,8 +99,11 @@ def build_activity_snapshot(
     net_flow_eur = 0.0
     latest_flow = "n/a"
     if not cash_flows.empty:
-        if "amount_eur" in cash_flows.columns:
-            net_flow_eur = float(pd.to_numeric(cash_flows["amount_eur"]).sum())
+        external_cash_flows = _external_investment_cash_flows(cash_flows)
+        if "amount_eur" in external_cash_flows.columns:
+            net_flow_eur = float(
+                pd.to_numeric(external_cash_flows["amount_eur"]).sum()
+            )
         if "flow_date" in cash_flows.columns:
             latest_flow = _date_label(_to_datetime(cash_flows["flow_date"]).max())
     statement_flows = _statement_investment_flows(transactions, cash_flows)
@@ -140,8 +155,9 @@ def build_monthly_activity(
             )
             frames.append(grouped)
 
-    if not cash_flows.empty and "flow_date" in cash_flows.columns:
-        flows = _with_month(cash_flows, "flow_date")
+    external_cash_flows = _external_investment_cash_flows(cash_flows)
+    if not external_cash_flows.empty and "flow_date" in external_cash_flows.columns:
+        flows = _with_month(external_cash_flows, "flow_date")
         if not flows.empty:
             if "amount_eur" not in flows.columns:
                 flows["amount_eur"] = 0.0

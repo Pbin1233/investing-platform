@@ -156,3 +156,31 @@ def test_activity_counts_statement_funded_trades_as_investment_flow_only():
     assert snapshot["investment_flow_eur"] == 53000.0
     assert june["statement_investment_flow_eur"] == 25000.0
     assert june["investment_flow_eur"] == 53000.0
+
+
+def test_activity_cash_flow_totals_ignore_non_investment_cash_rows():
+    transactions = pd.DataFrame()
+    cash_flows = pd.DataFrame(
+        [
+            {
+                "flow_date": "2026-06-01",
+                "broker_name": "DEGIRO",
+                "flow_type": "DEPOSIT",
+                "amount_eur": 12000,
+            },
+            {
+                "flow_date": "2026-06-02",
+                "broker_name": "DEGIRO",
+                "flow_type": "FEE",
+                "amount_eur": 10,
+            },
+        ]
+    )
+
+    snapshot = build_activity_snapshot(transactions, cash_flows, pd.DataFrame())
+    monthly = build_monthly_activity(transactions, cash_flows, pd.DataFrame())
+
+    assert snapshot["net_flow_eur"] == 12000.0
+    assert snapshot["investment_flow_eur"] == 12000.0
+    assert monthly.iloc[0]["cash_flows"] == 1
+    assert monthly.iloc[0]["net_flow_eur"] == 12000.0
